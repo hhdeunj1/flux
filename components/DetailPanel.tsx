@@ -564,12 +564,12 @@ function GitHubIssuePanel({ repos, issueRepo, onRepoChange, mainIssue, isGenerat
         {/* Claude로 이슈 생성 */}
         <TouchableOpacity
           onPress={onGenerate}
-          disabled={isGenerating || !localRepo}
-          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(0,122,255,0.3)', backgroundColor: 'rgba(0,122,255,0.08)', paddingVertical: 14, opacity: (isGenerating || !localRepo) ? 0.5 : 1 }}
+          disabled={isGenerating || !localRepo || Platform.OS === 'web'}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 10, borderWidth: 1, borderColor: Platform.OS === 'web' ? C.border : 'rgba(0,122,255,0.3)', backgroundColor: Platform.OS === 'web' ? C.bg3 : 'rgba(0,122,255,0.08)', paddingVertical: 14, opacity: (isGenerating || !localRepo || Platform.OS === 'web') ? 0.4 : 1 }}
         >
-          <Ionicons name="sparkles" size={15} color="#007AFF" />
-          <Text style={{ color: '#007AFF', fontSize: 14, fontWeight: '600' }}>
-            {isGenerating ? 'Claude 작성 중...' : 'Claude로 이슈 생성'}
+          <Ionicons name="sparkles" size={15} color={Platform.OS === 'web' ? C.text3 : '#007AFF'} />
+          <Text style={{ color: Platform.OS === 'web' ? C.text3 : '#007AFF', fontSize: 14, fontWeight: '600' }}>
+            {Platform.OS === 'web' ? 'Claude 이슈 생성 (앱 전용)' : isGenerating ? 'Claude 작성 중...' : 'Claude로 이슈 생성'}
           </Text>
         </TouchableOpacity>
 
