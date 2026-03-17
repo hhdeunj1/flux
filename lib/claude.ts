@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import { Task } from './supabase';
 
 const CLAUDE_KEY = 'hchat_auth_token';
@@ -135,8 +136,11 @@ export async function generateIssue(
   task: Partial<Task>,
   repo: string,
 ): Promise<{ title: string; body: string }> {
-  const host = await getProxyHost();
-  const res = await fetch(`http://${host}:3001`, {
+  const url = Platform.OS === 'web'
+    ? '/api/claude'
+    : `http://${await getProxyHost()}:3001`;
+
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
