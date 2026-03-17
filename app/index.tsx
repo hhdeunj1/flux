@@ -284,27 +284,49 @@ export default function HomeScreen() {
     const isSelected = selectedTask?.id === item.id;
 
     if (isMobile) {
-      const dot = item.product ? (PRODUCT_DOT[item.product] ?? '#8E8E93') : null;
+      const productDot = item.product ? (PRODUCT_DOT[item.product] ?? '#8E8E93') : null;
+      const milestoneDot = item.milestone ? (MILESTONE_DOT[item.milestone] ?? '#8E8E93') : null;
+      const issueNums = issues.map((i) => `#${i.github_issue_number}`).join(' ');
       return (
         <TouchableOpacity
           style={[
-            { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.rowBorder, gap: 10 },
+            { paddingVertical: 10, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.rowBorder },
             item.type === 'schedule' && { borderLeftWidth: 3, borderLeftColor: '#5AC8FA' },
             isSelected && { backgroundColor: 'rgba(0,122,255,0.10)' },
           ]}
           onPress={() => setSelectedTask(isSelected ? null : item)}
         >
-          {dot && <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: dot, flexShrink: 0 }} />}
-          <Text style={{ flex: 1, fontSize: 15, letterSpacing: -0.3, color: C.text }} numberOfLines={1}>{item.title}</Text>
-          {item.type !== 'schedule' ? (
-            <View style={[styles.statusPill, { backgroundColor: sm.bg, borderColor: sm.border }]}>
-              <Text style={[styles.statusPillText, { color: sm.color }]}>{sm.label}</Text>
-            </View>
-          ) : (
-            <View style={[styles.statusPill, { backgroundColor: 'rgba(90,200,250,0.10)', borderColor: 'rgba(90,200,250,0.28)' }]}>
-              <Text style={[styles.statusPillText, { color: '#5AC8FA' }]}>일정</Text>
-            </View>
-          )}
+          {/* Line 1: title + issue badge + status */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+            <Text style={{ flex: 1, fontSize: 15, letterSpacing: -0.3, color: C.text }} numberOfLines={1}>{item.title}</Text>
+            {issueNums ? (
+              <Text style={{ fontSize: 11, color: C.text3, letterSpacing: -0.2 }}>{issueNums}</Text>
+            ) : null}
+            {item.type !== 'schedule' ? (
+              <View style={[styles.statusPill, { backgroundColor: sm.bg, borderColor: sm.border }]}>
+                <Text style={[styles.statusPillText, { color: sm.color }]}>{sm.label}</Text>
+              </View>
+            ) : (
+              <View style={[styles.statusPill, { backgroundColor: 'rgba(90,200,250,0.10)', borderColor: 'rgba(90,200,250,0.28)' }]}>
+                <Text style={[styles.statusPillText, { color: '#5AC8FA' }]}>일정</Text>
+              </View>
+            )}
+          </View>
+          {/* Line 2: product chip + milestone chip */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {productDot ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.chipBg, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, borderWidth: StyleSheet.hairlineWidth, borderColor: productDot + '55' }}>
+                <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: productDot }} />
+                <Text style={{ fontSize: 11, color: productDot, letterSpacing: -0.2 }} numberOfLines={1}>{item.product}</Text>
+              </View>
+            ) : null}
+            {milestoneDot ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.chipBg, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, borderWidth: StyleSheet.hairlineWidth, borderColor: milestoneDot + '55' }}>
+                <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: milestoneDot }} />
+                <Text style={{ fontSize: 11, color: milestoneDot, letterSpacing: -0.2 }}>{item.milestone}</Text>
+              </View>
+            ) : null}
+          </View>
         </TouchableOpacity>
       );
     }
