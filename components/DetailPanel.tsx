@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput, Modal, ScrollView,
-  Pressable, KeyboardAvoidingView, Platform, StyleSheet, Dimensions, Linking,
+  Pressable, KeyboardAvoidingView, Platform, StyleSheet, Dimensions, Linking, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase, Task, ChecklistItem, TaskType } from '../lib/supabase';
@@ -669,6 +669,8 @@ export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onCl
   const removeCustomItem = (idx: number) =>
     setEditChecklist((cur) => cur.filter((_, i) => i !== idx));
 
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const handleSave = async () => {
@@ -727,10 +729,10 @@ export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onCl
   };
 
   return (
-    <Modal visible animationType="fade" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.detailModalOverlay}>
-        <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
-        <View style={[styles.detailPanel, { backgroundColor: C.bg2, borderColor: C.border }]}>
+    <Modal visible animationType={isMobile ? 'slide' : 'fade'} transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.detailModalOverlay, isMobile && { justifyContent: 'flex-end', alignItems: 'stretch' }]}>
+        {!isMobile && <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />}
+        <View style={[styles.detailPanel, { backgroundColor: C.bg2, borderColor: C.border }, isMobile && { borderRadius: 0, width: '100%', maxWidth: undefined, maxHeight: '100%', flex: 1 }]}>
           {/* 헤더: 제목 + GitHub이슈 + 삭제 + 닫기 */}
           <View style={[styles.detailCompactHeader, { borderBottomColor: C.border }]}>
             <TextInput
@@ -785,7 +787,7 @@ export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onCl
             <TextInput style={[styles.panelNoteInput, { backgroundColor: C.input, color: C.text2, borderColor: C.border }]}
               value={editNote} onChangeText={setEditNote} placeholder="메모 (선택)" placeholderTextColor={C.text4} />
 
-            <View style={styles.twoColRow}>
+            <View style={[styles.twoColRow, isMobile && { flexDirection: 'column' }]}>
               {/* 왼쪽: 프로덕트 / 마일스톤 / 연관사업 / 중요도 / 날짜 */}
               <View style={styles.twoColPane}>
                 {mode === 'work' && (<>
@@ -867,7 +869,7 @@ export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onCl
                 )}
               </View>
 
-              <View style={[styles.twoColDivider, { backgroundColor: C.border }]} />
+              {!isMobile && <View style={[styles.twoColDivider, { backgroundColor: C.border }]} />}
 
               {/* 오른쪽: 타입 / 상태 / 체크리스트 */}
               <View style={styles.twoColPane}>

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, Modal, ScrollView,
-  KeyboardAvoidingView, Platform, Alert, Linking,
+  KeyboardAvoidingView, Platform, Alert, Linking, useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, Task, TaskType } from '../lib/supabase';
@@ -157,6 +157,8 @@ export default function HomeScreen() {
   const toggleLight = async () => { const next = !isLight; setIsLight(next); await AsyncStorage.setItem('flux_light', next ? '1' : '0'); };
   const C = isLight ? LIGHT_C : DARK_C;
 
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
   const [tasks, setTasks] = useState<Task[]>([]);
   const [filters, setFilters] = useState<FilterMap>({});
   const [searchText, setSearchText] = useState('');
@@ -280,6 +282,33 @@ export default function HomeScreen() {
     const issues = item.task_issues ?? [];
     const sm = STATUS_META[item.status] ?? STATUS_META['todo'];
     const isSelected = selectedTask?.id === item.id;
+
+    if (isMobile) {
+      const dot = item.product ? (PRODUCT_DOT[item.product] ?? '#8E8E93') : null;
+      return (
+        <TouchableOpacity
+          style={[
+            { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.rowBorder, gap: 10 },
+            item.type === 'schedule' && { borderLeftWidth: 3, borderLeftColor: '#5AC8FA' },
+            isSelected && { backgroundColor: 'rgba(0,122,255,0.10)' },
+          ]}
+          onPress={() => setSelectedTask(isSelected ? null : item)}
+        >
+          {dot && <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: dot, flexShrink: 0 }} />}
+          <Text style={{ flex: 1, fontSize: 15, letterSpacing: -0.3, color: C.text }} numberOfLines={1}>{item.title}</Text>
+          {item.type !== 'schedule' ? (
+            <View style={[styles.statusPill, { backgroundColor: sm.bg, borderColor: sm.border }]}>
+              <Text style={[styles.statusPillText, { color: sm.color }]}>{sm.label}</Text>
+            </View>
+          ) : (
+            <View style={[styles.statusPill, { backgroundColor: 'rgba(90,200,250,0.10)', borderColor: 'rgba(90,200,250,0.28)' }]}>
+              <Text style={[styles.statusPillText, { color: '#5AC8FA' }]}>일정</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      );
+    }
+
     return (
       <TouchableOpacity
         style={[styles.tableRow, { borderBottomColor: C.rowBorder }, isSelected && styles.tableRowSelected, item.type === 'schedule' && styles.tableRowSchedule]}
@@ -444,7 +473,7 @@ export default function HomeScreen() {
               <Text style={[styles.rowCount, { color: C.text3 }]}>{processedTasks.length}개 항목</Text>
 
               {/* 컬럼 헤더 (필터+정렬 통합) */}
-              <View style={[styles.colHeaderRow, { borderColor: C.rowBorder }]}>
+              {!isMobile && <View style={[styles.colHeaderRow, { borderColor: C.rowBorder }]}>
                 <View style={{ width: COL.product }}>
                   <ColFilter asHeader C={C} label="프로덕트" options={PRODUCTS}
                     value={filters.product} onSelect={(v) => setFilters((f) => ({ ...f, product: v }))}
@@ -474,7 +503,7 @@ export default function HomeScreen() {
                     <Text style={[styles.colHeaderLabel, { color: C.text3 }]}>이슈</Text>
                   </View>
                 )}
-              </View>
+              </View>}
 
               <FlatList
                 data={processedTasks}
