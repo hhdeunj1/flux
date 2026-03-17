@@ -3,21 +3,21 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { apiKey, model, max_tokens, messages } = req.body ?? {};
+  const { apiKey, ...rest } = req.body ?? {};
 
-  if (!apiKey || !messages) {
-    return res.status(400).json({ error: 'apiKey and messages are required' });
+  if (!apiKey) {
+    return res.status(400).json({ error: 'apiKey is required' });
   }
 
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('https://h-chat-api.autoever.com/claude-code/v2/v1/messages', {
       method: 'POST',
       headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
+        'authorization': `Bearer ${apiKey}`,
         'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
       },
-      body: JSON.stringify({ model, max_tokens, messages }),
+      body: JSON.stringify(rest),
     });
 
     const data = await response.json();
