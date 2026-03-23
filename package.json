@@ -8,7 +8,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "proxy": "node proxy.js",
-    "dev": "node proxy.js & expo start"
+    "dev": "pkill -f 'proxy.js' 2>/dev/null; pkill -f 'expo start' 2>/dev/null; sleep 1; node proxy.js & expo start --web"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

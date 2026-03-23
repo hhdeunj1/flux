@@ -16,7 +16,7 @@ export type ThemeColors = typeof DARK_C;
 // ─── 상수 ──────────────────────────────────────────────────
 export const PRODUCTS   = ['라이더앱', '택시기사앱', '드라이버앱'];
 export const MILESTONES = ['v4.10', 'v4.11', 'v4.12', 'TBD', 'ETC'];
-export const BUSINESSES = ['사업A', '사업B', '사업C', '내부개선'];
+export const BUSINESSES = ['BTS', '이응패스', '영암택시', '영덕택시', '동특교', '내부개선'];
 
 export const PRIORITIES: { label: string; value: Task['priority'] }[] = [
   { label: 'P0', value: 'urgent' },
@@ -30,33 +30,52 @@ export const STATUSES: { label: string; value: Task['status'] }[] = [
   { label: 'done',        value: 'done' },
 ];
 export const STATUS_META: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  todo:        { label: 'to-do',       color: '#94A3B8', bg: 'rgba(148,163,184,0.10)', border: 'rgba(148,163,184,0.28)' },
-  in_progress: { label: 'in-progress', color: '#60A5FA', bg: 'rgba(96,165,250,0.10)',  border: 'rgba(96,165,250,0.28)'  },
-  in_confirm:  { label: 'in-confirm',  color: '#C084FC', bg: 'rgba(192,132,252,0.10)', border: 'rgba(192,132,252,0.28)' },
-  done:        { label: 'done',        color: '#4ADE80', bg: 'rgba(74,222,128,0.10)',  border: 'rgba(74,222,128,0.28)'  },
+  todo:        { label: 'to-do',       color: '#8E8E93', bg: 'rgba(142,142,147,0.12)', border: 'rgba(142,142,147,0.30)' },
+  in_progress: { label: 'in-progress', color: '#0A84FF', bg: 'rgba(10,132,255,0.12)',  border: 'rgba(10,132,255,0.35)'  },
+  in_confirm:  { label: 'in-confirm',  color: '#BF5AF2', bg: 'rgba(191,90,242,0.12)',  border: 'rgba(191,90,242,0.35)'  },
+  done:        { label: 'done',        color: '#30D158', bg: 'rgba(48,209,88,0.12)',    border: 'rgba(48,209,88,0.35)'   },
 };
 
-export const COL = { product: 90, milestone: 68, type: 90, status: 110, issue: 80 };
+export const COL = { num: 40, product: 90, milestone: 92, business: 102, type: 90, due: 88, status: 110, issue: 130 };
 export const PANEL_WIDTH = 300;
 
 // 프로덕트/마일스톤 dot 색상 (chip은 중립 배경, dot만 컬러)
 export const PRODUCT_DOT: Record<string, string> = {
-  '라이더앱':   '#007AFF', // 파
-  '택시기사앱': '#34C759', // 초
-  '드라이버앱': '#FFD60A', // 노
+  '라이더앱':   '#D07070', // 📍 머티드 레드
+  '택시기사앱': '#C8A84A', // 🚕 머티드 옐로
+  '드라이버앱': '#5A9EC8', // 🚐 머티드 블루
 };
+export const PRODUCT_EMOJI: Record<string, string> = {
+  '라이더앱':   '📍',
+  '택시기사앱': '🚕',
+  '드라이버앱': '🚐',
+};
+export const PRODUCT_SHORT: Record<string, string> = {
+  '라이더앱':   '라앱',
+  '택시기사앱': '택시',
+  '드라이버앱': '드앱',
+};
+export const BUSINESS_DOT: Record<string, string> = {
+  'BTS':     '#FFD60A', // Yellow
+  '이응패스': '#FF6B81', // Rose Pink
+  '영암택시': '#2BCBBA', // Turquoise
+  '영덕택시': '#A55EEA', // Violet
+  '동특교':  '#34AADC', // Sky Blue
+  '내부개선': '#8E8E93', // Gray
+};
+
 export const MILESTONE_DOT: Record<string, string> = {
-  'v4.10': '#FF9500', // 오렌지
-  'v4.11': '#00C7BE', // 틸
-  'v4.12': '#5856D6', // 인디고
-  'TBD':   '#8E8E93', // 회색
-  'ETC':   '#636366', // 진회색
+  'v4.10': '#FF9F0A', // iOS Orange
+  'v4.11': '#5AC8FA', // iOS Light Blue
+  'v4.12': '#5E5CE6', // iOS Indigo
+  'TBD':   '#8E8E93', // iOS Gray
+  'ETC':   '#636366', // iOS Gray 2
 };
 
 export const CHECKLIST_ITEMS = ['이슈 등록', 'figma 기획', '싱크 w/서비스기획', '싱크 w/디자인개발', 'md 업데이트'];
 export const CHECKLIST_BY_TYPE: Record<TaskType, string[]> = {
   feature:   ['이슈 등록', 'figma 기획', '싱크 w/서비스기획', '싱크 w/디자인개발', 'md 업데이트'],
-  task:      ['이슈 등록', '싱크 w/서비스기획', '싱크 w/디자인개발', 'md 업데이트'],
+  task:      [],
   milestone: ['이슈 등록', '하위 아이템 정의', '진행률 모니터링', '완료 검토'],
   research:  ['이슈 등록', '리서치 진행', '결과 정리', '공유 싱크', 'md 업데이트'],
   schedule:  [],
@@ -84,6 +103,19 @@ export const TIME_VIEWS: { value: TimeView; label: string }[] = [
 // ─── 유틸 함수 ─────────────────────────────────────────────
 export function uid()      { return Math.random().toString(36).slice(2); }
 export function today()    { return new Date().toISOString().split('T')[0]; }
+export function todayKST() {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  return kst.toISOString().split('T')[0];
+}
+export function addWorkingDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  let count = 0;
+  while (count < days) {
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() !== 0 && d.getDay() !== 6) count++;
+  }
+  return d.toISOString().split('T')[0];
+}
 export function fmtDate(d: string | null | undefined)    { if (!d) return ''; return d.split('T')[0]; }
 export function fmtDisplay(d: string | null | undefined) {
   if (!d) return '—';

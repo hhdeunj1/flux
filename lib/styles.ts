@@ -17,7 +17,7 @@ export const styles = StyleSheet.create({
 
   // 탑바
   tableSection:    { flex: 1 },
-  tableTopBar:     { flexDirection: 'column', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  tableTopBar:     { flexDirection: 'column', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 18, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   headerTitleRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   headerLeft:      { flexDirection: 'row', alignItems: 'center', gap: 8 },
   timeViewTabs:    { flexDirection: 'row', gap: 2, borderRadius: 10, padding: 3, borderWidth: 1 },
@@ -36,7 +36,7 @@ export const styles = StyleSheet.create({
   addBtn:          { width: 30, height: 30, borderRadius: 15, backgroundColor: '#007AFF', alignItems: 'center', justifyContent: 'center' },
 
   // 검색바
-  searchBox:        { flexGrow: 1, minWidth: 120, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1 },
+  searchBox:        { width: 160, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1 },
   searchInput:      { flex: 1, fontSize: 13, padding: 0 },
 
   // 필터 칩 바
@@ -52,10 +52,10 @@ export const styles = StyleSheet.create({
   colHeaderIcons:   { flexDirection: 'row', alignItems: 'center', gap: 2 },
 
   // 컬럼 헤더 행
-  colHeaderRow:     { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 7, paddingHorizontal: 6 },
-  colHeaderCell:    { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 6 },
+  colHeaderRow:     { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 6, paddingHorizontal: 6 },
+  colHeaderCell:    { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 4 },
   colHeaderCellFlex:{ flex: 1 },
-  colHeaderLabel:   { fontSize: 11, fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' } as any,
+  colHeaderLabel:   { fontSize: 11, fontWeight: '600', letterSpacing: 0 },
   rowCount:         { fontSize: 11, paddingHorizontal: 14, paddingVertical: 5 },
 
   // 캘린더 공통 (월간/주간)
@@ -89,10 +89,10 @@ export const styles = StyleSheet.create({
   listRowTitle:     { flex: 1, fontSize: 14, fontWeight: '400', letterSpacing: -0.2 },
   listRowMeta:      { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 5 },
   typeIndicator:    { width: 3, borderRadius: 1.5, alignSelf: 'stretch', marginTop: 2, marginBottom: 2, marginLeft: 4 },
-  tableRow:         { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, paddingHorizontal: 8, borderBottomWidth: StyleSheet.hairlineWidth },
+  tableRow:         { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, paddingHorizontal: 6, borderBottomWidth: StyleSheet.hairlineWidth },
   tableRowSelected: { backgroundColor: 'rgba(0,122,255,0.10)' },
-  tableRowSchedule: { borderLeftWidth: 2, borderLeftColor: '#5AC8FA' },
-  tableCell:        { paddingHorizontal: 6, justifyContent: 'center', alignItems: 'flex-start' },
+  tableRowSchedule: {},
+  tableCell:        { paddingHorizontal: 4, justifyContent: 'center', alignItems: 'flex-start' },
   tableCellFlex:    { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   cellTitle:        { flex: 1, fontSize: 14, letterSpacing: -0.2 },
   cellEmpty:        { fontSize: 12 },
@@ -100,8 +100,8 @@ export const styles = StyleSheet.create({
   // 태그
   tagProduct:       { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   tagProductText:   { fontSize: 10, fontWeight: '600' },
-  tagMilestone:     { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  tagMilestoneText: { fontSize: 10, fontWeight: '600' },
+  tagMilestone:     { borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  tagMilestoneText: { fontSize: 10, fontWeight: '500' },
   tagIssueInline:   { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(0,122,255,0.12)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   tagIssueText:     { color: '#007AFF', fontSize: 10, fontWeight: '500' },
   statusPill:       { borderRadius: 5, paddingHorizontal: 8, paddingVertical: 3, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
@@ -196,7 +196,7 @@ export const styles = StyleSheet.create({
   toggleKnobOn:      { backgroundColor: '#fff', alignSelf: 'flex-end' },
   checklistLabel:    { flex: 1, color: '#8E8E93', fontSize: 12, letterSpacing: -0.1 },
   checklistLabelOff: { color: '#48484A' },
-  checklistLabelDone:{ color: '#007AFF' },
+  checklistLabelDone:{ color: '#48484A' },
   removeCustomBtn:   { paddingHorizontal: 4 },
   removeCustomText:  { color: '#48484A', fontSize: 14, lineHeight: 16 },
   checkbox:          { width: 15, height: 15, borderRadius: 4, borderWidth: 1.5, borderColor: '#48484A', alignItems: 'center', justifyContent: 'center' },

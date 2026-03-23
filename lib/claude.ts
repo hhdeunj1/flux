@@ -42,7 +42,7 @@ function buildPrompt(task: Partial<Task>, repo: string): string {
   };
   const product = productLabel[task.product ?? ''] ?? task.product ?? 'Shucle 앱';
 
-  const prompt = `당신은 한국어로 GitHub 이슈를 작성하는 UX기획 전문가입니다.
+  const commonHeader = `당신은 한국어로 GitHub 이슈를 작성하는 UX기획 전문가입니다.
 제품: ${product}
 아래 태스크 정보를 기반으로 GitHub 이슈를 JSON 형식으로 작성해주세요.
 
@@ -60,12 +60,48 @@ function buildPrompt(task: Partial<Task>, repo: string): string {
 ### 제목
 - 반드시 [자동생성🤖] 로 시작할 것
 
-### 진입 경로
-- 앱 화면 기준으로 작성 (예: 온보딩 > 개인/법인 선택 > 회원정보 입력)
-
 ### 연관 화면 / 연관 MD
 - 실제 Figma 프레임 URL이나 MD 앵커 링크를 알 수 없으면 해당 줄 전체를 생략할 것
 - 절대 추측하거나 placeholder URL을 넣지 말 것
+
+### AI Comments
+- 중요도 높은 순(필수 > 권장 > 참고)으로 정렬
+- 레이블은 반드시 백틱(코드 스타일)으로 표기
+  - \`필수\`: 미정의 시 개발 불가 또는 버그 확실
+  - \`권장\`: 엣지케이스 발생 가능
+  - \`참고\`: 추후 이슈화 고려
+- 연관 MD는 섹션 앵커 직링크로 표기`;
+
+  const taskBody = `
+## 이슈 형식 (본문, 이 형식을 정확히 따를 것)
+
+## 배경
+(이 태스크가 생긴 배경과 필요성 — "왜 지금 이 작업이 필요한가" 관점으로 작성)
+
+## 개요
+(작업 내용 한 줄 요약 — blockquote 없이 일반 텍스트로)
+
+## TO-DO
+- [ ] (작업 항목 1 — 노트에서 파악한 실제 작업 흐름 순서로 구성)
+- [ ] (작업 항목 2)
+
+---
+
+<details>
+<summary>🤖 AI Comments</summary>
+
+- \`참고\`: ...
+</details>
+
+---
+JSON만 응답하세요 (다른 텍스트 없이):
+{"title": "...", "body": "..."}`;
+
+  const featureBody = `
+## 이슈 작성 추가 규칙
+
+### 진입 경로
+- 앱 화면 기준으로 작성 (예: 온보딩 > 개인/법인 선택 > 회원정보 입력)
 
 ### AS-IS / TO-BE
 - 각 섹션 첫 줄: 핵심 변경 단어를 **볼드** 처리한 한 줄 요약 문장 (AS-IS와 TO-BE가 대응되게)
@@ -76,14 +112,6 @@ function buildPrompt(task: Partial<Task>, repo: string): string {
 - TO-BE 상세: 기존 항목 전체를 일반 텍스트로 나열하고, 변경 항목 뒤에 레이블 표기
   - 변경 항목 예: 나이 \`추가\`, 이름 \`변경\`, 주소 \`삭제\`
   - 버튼 동작 등 하위 불렛은 **새로 추가된 항목에만** 작성 (기존 항목은 단순 나열)
-
-### AI Comments
-- 중요도 높은 순(필수 > 권장 > 참고)으로 정렬
-- 레이블은 반드시 백틱(코드 스타일)으로 표기
-  - \`필수\`: 미정의 시 개발 불가 또는 버그 확실
-  - \`권장\`: 엣지케이스 발생 가능
-  - \`참고\`: 추후 이슈화 고려
-- 연관 MD는 섹션 앵커 직링크로 표기
 
 ### 구조화
 - 케이스가 복잡하거나 화면/항목 간 매핑이 필요하면 처음부터 테이블로 작성
@@ -128,6 +156,8 @@ function buildPrompt(task: Partial<Task>, repo: string): string {
 JSON만 응답하세요 (다른 텍스트 없이):
 {"title": "...", "body": "..."}`;
 
+  const prompt = commonHeader + (task.type === 'task' ? taskBody : featureBody);
+
   return prompt;
 }
 
@@ -136,8 +166,9 @@ export async function generateIssue(
   task: Partial<Task>,
   repo: string,
 ): Promise<{ title: string; body: string }> {
+  const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
   const url = Platform.OS === 'web'
-    ? '/api/claude'
+    ? (isLocalhost ? 'http://localhost:3001' : '/api/claude')
     : `http://${await getProxyHost()}:3001`;
 
   const res = await fetch(url, {
