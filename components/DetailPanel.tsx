@@ -2,16 +2,15 @@ import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput, Modal, ScrollView,
   Pressable, KeyboardAvoidingView, Platform, StyleSheet, Dimensions, Linking, useWindowDimensions,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { supabase, Task, ChecklistItem, TaskType, TaskLink } from '../lib/supabase';
+import { supabase, Task, ChecklistItem, TaskType } from '../lib/supabase';
 import { issueUrl, PINNED_REPOS, createIssue, fetchRepoIssues, GitHubIssue } from '../lib/github';
 import { getClaudeKey, generateIssue } from '../lib/claude';
 import {
   ThemeColors, DARK_C, LIGHT_C, AppMode, SortKey, SortDir, DraftIssue,
-  PRODUCTS, MILESTONES, BUSINESSES, PRIORITIES, STATUSES, SELECTABLE_TYPES, PRODUCT_EMOJI,
-  ALL_DEFAULT_CHECKLIST_ITEMS, CHECKLIST_BY_TYPE, STATUS_META,
+  PRODUCTS, MILESTONES, BUSINESSES, PRIORITIES, STATUSES, SELECTABLE_TYPES,
+  ALL_DEFAULT_CHECKLIST_ITEMS, CHECKLIST_BY_TYPE,
   fmtDate, fmtDisplay, today, uid, initChecklist,
 } from '../lib/constants';
 import { styles } from '../lib/styles';
@@ -30,8 +29,8 @@ export function Chip({ label, active, onPress, C }: { label: string; active: boo
 }
 
 // ─── 컬럼 필터 드롭다운 ────────────────────────────────────
-export function ColFilter({ label, options, displayOptions, value, onSelect, sortKey, currentSort, currentDir, onSort, asHeader, C }: {
-  label: string; options: string[]; displayOptions?: string[]; value: string | undefined;
+export function ColFilter({ label, options, value, onSelect, sortKey, currentSort, currentDir, onSort, asHeader, C }: {
+  label: string; options: string[]; value: string | undefined;
   onSelect: (v: string | undefined) => void;
   sortKey: SortKey; currentSort: SortKey; currentDir: SortDir; onSort: (key: SortKey, dir?: SortDir) => void;
   asHeader?: boolean;
@@ -46,7 +45,7 @@ export function ColFilter({ label, options, displayOptions, value, onSelect, sor
       {asHeader ? (
         <TouchableOpacity style={styles.colHeaderCell} onPress={() => setOpen(true)}>
           <Text style={[styles.colHeaderLabel, { color: colors.text3 }, (isFiltered || isSorted) && { color: '#007AFF' }]} numberOfLines={1}>
-            {value ? (displayOptions?.[options.indexOf(value)] ?? value) : label}
+            {value ?? label}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
             {isSorted && <Ionicons name={currentDir === 'asc' ? 'arrow-up' : 'arrow-down'} size={10} color="#007AFF" />}
@@ -57,7 +56,7 @@ export function ColFilter({ label, options, displayOptions, value, onSelect, sor
         <TouchableOpacity
           style={[styles.colHeader, { backgroundColor: isFiltered ? 'rgba(0,122,255,0.12)' : colors.bg3, borderColor: isFiltered ? 'rgba(0,122,255,0.28)' : colors.border }]}
           onPress={() => setOpen(true)}>
-          <Text style={[styles.colHeaderText, { color: isFiltered ? '#007AFF' : colors.text3 }]} numberOfLines={1}>{value ? (displayOptions?.[options.indexOf(value)] ?? value) : label}</Text>
+          <Text style={[styles.colHeaderText, { color: isFiltered ? '#007AFF' : colors.text3 }]} numberOfLines={1}>{value ?? label}</Text>
           <View style={styles.colHeaderIcons}>
             {isSorted && <Ionicons name={currentDir === 'asc' ? 'arrow-up' : 'arrow-down'} size={10} color="#007AFF" />}
             <Ionicons name="chevron-down" size={10} color={isFiltered ? '#007AFF' : colors.text4} />
@@ -85,10 +84,10 @@ export function ColFilter({ label, options, displayOptions, value, onSelect, sor
               onPress={() => { onSelect(undefined); setOpen(false); }}>
               <Text style={[styles.dropOptionText, !value && { color: '#007AFF' }]}>전체</Text>
             </TouchableOpacity>
-            {options.map((o, i) => (
+            {options.map((o) => (
               <TouchableOpacity key={o} style={[styles.dropOption, value === o && styles.dropOptionActive]}
                 onPress={() => { onSelect(o); setOpen(false); }}>
-                <Text style={[styles.dropOptionText, value === o && { color: '#007AFF' }]}>{displayOptions?.[i] ?? o}</Text>
+                <Text style={[styles.dropOptionText, value === o && { color: '#007AFF' }]}>{o}</Text>
                 {value === o && <Ionicons name="checkmark" size={14} color="#007AFF" />}
               </TouchableOpacity>
             ))}
@@ -307,30 +306,20 @@ function relDate(isoStr: string): string {
 }
 
 // ─── GitHub 이슈 패널 (DetailPanel 내부 오버레이) ────────────
-function GitHubIssuePanel({ repos, issueRepo, onRepoChange, allIssues, isGenerating, generateMsg, isLight, C, onClose, onLink, onUnlink, onGenerate }: {
+function GitHubIssuePanel({ repos, issueRepo, onRepoChange, mainIssue, isGenerating, isLight, C, onClose, onLink, onGenerate, onOpenIssue }: {
   repos: string[];
   issueRepo: string;
   onRepoChange: (v: string) => void;
-  allIssues: DraftIssue[];
+  mainIssue: DraftIssue | null;
   isGenerating: boolean;
-  generateMsg: string;
   isLight: boolean;
   C: ThemeColors;
   onClose: () => void;
   onLink: (repo: string, num: number) => void;
-  onUnlink: (id: string) => void;
   onGenerate: () => void;
+  onOpenIssue?: () => void;
 }) {
-  const canCallClaudeApi = Platform.OS !== 'web' || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
-    if (!isGenerating) { setElapsed(0); return; }
-    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [isGenerating]);
-
-  const [addOpen,       setAddOpen]       = useState(allIssues.length === 0);
-  const [linkNumber,    setLinkNumber]    = useState('');
+  const [linkNumber,    setLinkNumber]    = useState(mainIssue?.number ?? '');
   const [localRepo,     setLocalRepo]     = useState(issueRepo || repos[0] || '');
   const [issueListOpen, setIssueListOpen] = useState(false);
   const [issueList,     setIssueList]     = useState<GitHubIssue[]>([]);
@@ -338,17 +327,16 @@ function GitHubIssuePanel({ repos, issueRepo, onRepoChange, allIssues, isGenerat
   const [issuesError,   setIssuesError]   = useState('');
   const [issuesPage,    setIssuesPage]    = useState(1);
   const [hasMore,       setHasMore]       = useState(true);
-  const [issueSearch,   setIssueSearch]   = useState('');
 
   const handleRepoChange = (v: string) => {
     setLocalRepo(v);
     onRepoChange(v);
+    // 레포 바뀌면 리스트 리셋
     setIssueList([]);
     setIssueListOpen(false);
     setIssuesPage(1);
     setHasMore(true);
     setIssuesError('');
-    setIssueSearch('');
   };
 
   const loadIssues = async (repo: string, page: number, append = false) => {
@@ -387,264 +375,203 @@ function GitHubIssuePanel({ repos, issueRepo, onRepoChange, allIssues, isGenerat
     const num = parseInt(linkNumber.trim(), 10);
     if (!localRepo || !num) return;
     onLink(localRepo, num);
-    setLinkNumber('');
   };
 
   const handleSelectIssue = (issue: GitHubIssue) => {
     onLink(localRepo, issue.number);
-    setIssueListOpen(false);
   };
 
   return (
     <View style={[StyleSheet.absoluteFillObject, { backgroundColor: C.bg2, zIndex: 10 }]}>
       <View style={[styles.issuePanelHeader, { borderBottomColor: C.border }]}>
-        <TouchableOpacity onPress={onClose} style={styles.issuePanelBack} disabled={isGenerating}>
-          <Ionicons name="chevron-back" size={20} color={isGenerating ? C.text4 : C.text3} />
+        <TouchableOpacity onPress={onClose} style={styles.issuePanelBack}>
+          <Ionicons name="chevron-back" size={20} color={C.text3} />
         </TouchableOpacity>
         <Text style={[styles.issuePanelTitle, { color: C.text }]}>GitHub 이슈</Text>
       </View>
 
-      {isGenerating && (
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: C.bg2, zIndex: 20, justifyContent: 'center', alignItems: 'center', gap: 16 }]}>
-          <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={{ color: C.text, fontSize: 15, fontWeight: '600' }}>Claude가 이슈를 작성 중이에요</Text>
-          <Text style={{ color: C.text3, fontSize: 13 }}>보통 20~30초 정도 걸려요</Text>
-          <Text style={{ color: C.text4, fontSize: 12, fontVariant: ['tabular-nums'] }}>
-            {String(Math.floor(elapsed / 60)).padStart(2, '0')}:{String(elapsed % 60).padStart(2, '0')} 경과
-          </Text>
-        </View>
-      )}
-
-      {!isGenerating && !!generateMsg && !generateMsg.startsWith('✓') && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: 'rgba(255,69,58,0.08)' }}>
-          <Ionicons name="alert-circle-outline" size={14} color="#FF453A" />
-          <Text style={{ color: '#FF453A', fontSize: 12, flex: 1 }}>{generateMsg}</Text>
-        </View>
-      )}
-
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 16 }} keyboardShouldPersistTaps="handled">
 
-        {/* 연결된 이슈 목록 */}
-        <View style={{ gap: 8 }}>
-          <Text style={[styles.panelSectionLabel, { color: C.labelColor, marginTop: 0 }]}>연결된 이슈</Text>
-          {allIssues.length === 0 ? (
-            <Text style={{ color: C.text4, fontSize: 13 }}>연결된 이슈가 없어요</Text>
-          ) : allIssues.map((issue) => {
-            const repoShort = (issue.repo.split('/')[1] ?? issue.repo).replace('shucle-', '').replace('-product', '');
-            return (
-              <View key={issue.id} style={{ borderRadius: 10, borderWidth: 1, borderColor: C.border, backgroundColor: C.bg3, paddingHorizontal: 12, paddingVertical: 10 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Ionicons name="logo-github" size={14} color={C.text3} />
-                  <Text style={{ color: C.text2, fontSize: 13, fontWeight: '600', flex: 1 }}>
-                    {repoShort} <Text style={{ color: '#007AFF' }}>#{issue.number}</Text>
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => Linking.openURL(issueUrl(issue.repo, parseInt(issue.number))).catch(() => {})}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4 }}
-                  >
-                    <Ionicons name="open-outline" size={13} color="#007AFF" />
-                    <Text style={{ color: '#007AFF', fontSize: 12 }}>열기</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => onUnlink(issue.id)} style={{ padding: 4 }}>
-                    <Ionicons name="trash-outline" size={14} color="#FF453A" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })}
+        {/* 레포 선택 */}
+        <View>
+          <Text style={[styles.panelSectionLabel, { color: C.labelColor, marginTop: 0 }]}>레포지토리</Text>
+          <IssueRepoPicker repos={repos} value={localRepo} onChange={handleRepoChange} C={C} noMargin />
         </View>
 
-        {/* 이슈 추가 연결 (접힘) */}
-        <TouchableOpacity
-          onPress={() => setAddOpen(!addOpen)}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 2 }}
-        >
-          <Ionicons name={addOpen ? 'chevron-up' : 'chevron-down'} size={14} color={C.text3} />
-          <Text style={{ color: C.text3, fontSize: 13, fontWeight: '600' }}>이슈 추가 연결</Text>
-        </TouchableOpacity>
-
-        {addOpen && (<>
-
-          {/* 레포 선택 */}
-          <View>
-            <Text style={[styles.panelSectionLabel, { color: C.labelColor, marginTop: 0 }]}>레포지토리</Text>
-            <IssueRepoPicker repos={repos} value={localRepo} onChange={handleRepoChange} C={C} noMargin />
-          </View>
-
-          {/* 이슈 목록 (Finder 스타일) */}
-          <View style={{ borderWidth: StyleSheet.hairlineWidth, borderColor: C.border, overflow: 'hidden' }}>
-            <TouchableOpacity
-              onPress={handleToggleList}
-              disabled={!localRepo}
-              style={{ flexDirection: 'row', alignItems: 'center', height: 26, paddingHorizontal: 8, backgroundColor: C.bg3, gap: 5 }}
-              activeOpacity={0.7}
-            >
-              <Text style={{ fontSize: 7, color: localRepo ? C.text3 : C.text4, marginTop: 1, width: 8 }}>
-                {issueListOpen ? '▼' : '▶'}
+        {/* 연결된 이슈 정보 */}
+        {mainIssue && (
+          <View style={{ borderRadius: 10, borderWidth: 1, borderColor: 'rgba(48,209,88,0.28)', backgroundColor: 'rgba(48,209,88,0.07)', padding: 12, gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="logo-github" size={14} color="#30D158" />
+              <Text style={{ color: '#30D158', fontSize: 13, fontWeight: '600' }}>
+                {mainIssue.repo.split('/')[1]} #{mainIssue.number}
               </Text>
-              <Text style={{ flex: 1, fontSize: 11, fontWeight: '600', color: localRepo ? C.text2 : C.text4, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                이슈 목록
-              </Text>
-              {issuesLoading && issueListOpen && <Text style={{ color: C.text4, fontSize: 11 }}>···</Text>}
-            </TouchableOpacity>
-
-            {issueListOpen && (
-              <>
-                <View style={{ flexDirection: 'row', alignItems: 'stretch', height: 22, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border, backgroundColor: C.bg3 }}>
-                  <View style={{ width: 52, justifyContent: 'center', paddingHorizontal: 7, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border }}>
-                    <Text style={{ fontSize: 10, color: C.text3, fontWeight: '600' }}>번호 ↓</Text>
-                  </View>
-                  <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 7, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border }}>
-                    <Text style={{ fontSize: 10, color: C.text3, fontWeight: '600' }}>제목</Text>
-                  </View>
-                  <View style={{ width: 58, justifyContent: 'center', paddingHorizontal: 7 }}>
-                    <Text style={{ fontSize: 10, color: C.text3, fontWeight: '600', textAlign: 'right' }}>등록일</Text>
-                  </View>
-                </View>
-
-                {/* 검색 */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 5, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border, backgroundColor: C.bg }}>
-                  <Ionicons name="search" size={12} color={C.text4} />
-                  <TextInput
-                    style={{ flex: 1, fontSize: 12, color: C.text, padding: 0 }}
-                    placeholder="제목 검색..."
-                    placeholderTextColor={C.text4}
-                    value={issueSearch}
-                    onChangeText={setIssueSearch}
-                  />
-                  {!!issueSearch && (
-                    <TouchableOpacity onPress={() => setIssueSearch('')}>
-                      <Ionicons name="close-circle" size={13} color={C.text4} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                {issuesLoading && issueList.length === 0 ? (
-                  <View style={{ height: 40, alignItems: 'center', justifyContent: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border }}>
-                    <Text style={{ color: C.text3, fontSize: 12 }}>불러오는 중...</Text>
-                  </View>
-                ) : issuesError ? (
-                  <View style={{ height: 40, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border }}>
-                    <Ionicons name="alert-circle-outline" size={13} color="#FF453A" />
-                    <Text style={{ color: '#FF453A', fontSize: 12, flex: 1 }}>{issuesError}</Text>
-                    <TouchableOpacity onPress={() => loadIssues(localRepo, 1)}>
-                      <Text style={{ color: '#007AFF', fontSize: 12 }}>재시도</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : issueList.length === 0 ? (
-                  <View style={{ height: 40, alignItems: 'center', justifyContent: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border }}>
-                    <Text style={{ color: C.text3, fontSize: 12 }}>열린 이슈가 없어요</Text>
-                  </View>
-                ) : (() => {
-                  const filtered = issueSearch.trim()
-                    ? issueList.filter((i) => i.title.toLowerCase().includes(issueSearch.toLowerCase()) || String(i.number).includes(issueSearch.trim()))
-                    : issueList;
-                  if (filtered.length === 0) return (
-                    <View style={{ height: 40, alignItems: 'center', justifyContent: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border }}>
-                      <Text style={{ color: C.text3, fontSize: 12 }}>검색 결과 없음</Text>
-                    </View>
-                  );
-                  return <>{filtered.map((issue, idx) => {
-                    const alreadyLinked = allIssues.some((i) => i.number === String(issue.number) && i.repo === localRepo);
-                    const zebra = idx % 2 !== 0;
-                    return (
-                      <TouchableOpacity
-                        key={issue.number}
-                        onPress={() => handleSelectIssue(issue)}
-                        disabled={alreadyLinked}
-                        style={{
-                          flexDirection: 'row', alignItems: 'stretch', height: 24,
-                          borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border,
-                          backgroundColor: alreadyLinked
-                            ? 'rgba(74,222,128,0.08)'
-                            : zebra
-                              ? (isLight ? 'rgba(0,0,0,0.028)' : 'rgba(255,255,255,0.04)')
-                              : 'transparent',
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <View style={{ width: 52, justifyContent: 'center', paddingHorizontal: 7, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border }}>
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: alreadyLinked ? '#4ADE80' : '#007AFF' }}>
-                            #{issue.number}
-                          </Text>
-                        </View>
-                        <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 7, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border }}>
-                          <Text style={{ fontSize: 12, color: alreadyLinked ? C.text3 : C.text }} numberOfLines={1}>
-                            {issue.title}
-                          </Text>
-                        </View>
-                        <View style={{ width: 58, justifyContent: 'center', paddingHorizontal: 7 }}>
-                          <Text style={{ fontSize: 11, color: C.text4, textAlign: 'right' }}>
-                            {relDate(issue.created_at)}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}</>;
-                })()}
-
-                {!issueSearch && issueList.length > 0 && (hasMore || (issuesLoading && issueList.length > 0)) && (
-                  <TouchableOpacity
-                    onPress={handleLoadMore}
-                    disabled={issuesLoading}
-                    style={{ height: 28, alignItems: 'center', justifyContent: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border, backgroundColor: C.bg3 }}
-                  >
-                    <Text style={{ color: issuesLoading ? C.text4 : '#007AFF', fontSize: 12, fontWeight: '600' }}>
-                      {issuesLoading ? '···' : '더 보기'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </>
+            </View>
+            {onOpenIssue && (
+              <TouchableOpacity onPress={onOpenIssue} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name="open-outline" size={12} color="#007AFF" />
+                <Text style={{ color: '#007AFF', fontSize: 12 }}>GitHub에서 열기</Text>
+              </TouchableOpacity>
             )}
           </View>
+        )}
 
-          {/* 번호로 직접 연결 */}
-          <View>
-            <Text style={[styles.panelSectionLabel, { color: C.labelColor, marginTop: 0 }]}>번호로 직접 연결</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, borderRadius: 8, borderWidth: 1, borderColor: C.border, backgroundColor: C.input, paddingHorizontal: 10, paddingVertical: 8 }}>
-                <Text style={{ color: C.text3, fontSize: 13, fontWeight: '700', marginRight: 4 }}>#</Text>
-                <TextInput
-                  style={{ flex: 1, color: C.text, fontSize: 13, padding: 0 }}
-                  value={linkNumber}
-                  onChangeText={setLinkNumber}
-                  placeholder="이슈 번호"
-                  placeholderTextColor={C.text4}
-                  keyboardType="numeric"
-                  returnKeyType="done"
-                  onSubmitEditing={handleLink}
-                />
-              </View>
-              <TouchableOpacity
-                onPress={handleLink}
-                disabled={!localRepo || !linkNumber.trim()}
-                style={{ backgroundColor: '#007AFF', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9, opacity: (!localRepo || !linkNumber.trim()) ? 0.4 : 1 }}
-              >
-                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>연결</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+        {/* 이슈 목록 (Finder 스타일) */}
+        <View style={{ borderWidth: StyleSheet.hairlineWidth, borderColor: C.border, overflow: 'hidden' }}>
 
-          {/* 구분선 */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: C.border }} />
-            <Text style={{ color: C.text4, fontSize: 11 }}>또는</Text>
-            <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: C.border }} />
-          </View>
-
-          {/* Claude로 이슈 생성 */}
+          {/* 섹션 헤더 */}
           <TouchableOpacity
-            onPress={onGenerate}
-            disabled={isGenerating || !localRepo || !canCallClaudeApi}
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 10, borderWidth: 1, borderColor: canCallClaudeApi ? 'rgba(0,122,255,0.3)' : C.border, backgroundColor: canCallClaudeApi ? 'rgba(0,122,255,0.08)' : C.bg3, paddingVertical: 14, opacity: (isGenerating || !localRepo || !canCallClaudeApi) ? 0.4 : 1 }}
+            onPress={handleToggleList}
+            disabled={!localRepo}
+            style={{ flexDirection: 'row', alignItems: 'center', height: 26, paddingHorizontal: 8, backgroundColor: C.bg3, gap: 5 }}
+            activeOpacity={0.7}
           >
-            <Ionicons name="sparkles" size={15} color={canCallClaudeApi ? '#007AFF' : C.text3} />
-            <Text style={{ color: canCallClaudeApi ? '#007AFF' : C.text3, fontSize: 14, fontWeight: '600' }}>
-              {!canCallClaudeApi ? 'Claude 이슈 생성 (로컬 전용)' : isGenerating ? 'Claude 작성 중...' : 'Claude로 이슈 생성'}
+            <Text style={{ fontSize: 7, color: localRepo ? C.text3 : C.text4, marginTop: 1, width: 8 }}>
+              {issueListOpen ? '▼' : '▶'}
             </Text>
+            <Text style={{ flex: 1, fontSize: 11, fontWeight: '600', color: localRepo ? C.text2 : C.text4, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              이슈 목록
+            </Text>
+            {issuesLoading && issueListOpen && (
+              <Text style={{ color: C.text4, fontSize: 11 }}>···</Text>
+            )}
           </TouchableOpacity>
 
-        </>)}
+          {issueListOpen && (
+            <>
+              {/* 컬럼 헤더 (세로 구분선 포함) */}
+              <View style={{ flexDirection: 'row', alignItems: 'stretch', height: 22, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border, backgroundColor: C.bg3 }}>
+                <View style={{ width: 52, justifyContent: 'center', paddingHorizontal: 7, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border }}>
+                  <Text style={{ fontSize: 10, color: C.text3, fontWeight: '600' }}>번호 ↓</Text>
+                </View>
+                <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 7, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border }}>
+                  <Text style={{ fontSize: 10, color: C.text3, fontWeight: '600' }}>제목</Text>
+                </View>
+                <View style={{ width: 58, justifyContent: 'center', paddingHorizontal: 7 }}>
+                  <Text style={{ fontSize: 10, color: C.text3, fontWeight: '600', textAlign: 'right' }}>등록일</Text>
+                </View>
+              </View>
+
+              {/* 로딩 / 에러 / 빈 상태 */}
+              {issuesLoading && issueList.length === 0 ? (
+                <View style={{ height: 40, alignItems: 'center', justifyContent: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border }}>
+                  <Text style={{ color: C.text3, fontSize: 12 }}>불러오는 중...</Text>
+                </View>
+              ) : issuesError ? (
+                <View style={{ height: 40, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border }}>
+                  <Ionicons name="alert-circle-outline" size={13} color="#FF453A" />
+                  <Text style={{ color: '#FF453A', fontSize: 12, flex: 1 }}>{issuesError}</Text>
+                  <TouchableOpacity onPress={() => loadIssues(localRepo, 1)}>
+                    <Text style={{ color: '#007AFF', fontSize: 12 }}>재시도</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : issueList.length === 0 ? (
+                <View style={{ height: 40, alignItems: 'center', justifyContent: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border }}>
+                  <Text style={{ color: C.text3, fontSize: 12 }}>열린 이슈가 없어요</Text>
+                </View>
+              ) : (
+                /* 데이터 행 (지브라 + 세로 구분선) */
+                issueList.map((issue, idx) => {
+                  const selected = mainIssue?.number === String(issue.number);
+                  const zebra = idx % 2 !== 0;
+                  return (
+                    <TouchableOpacity
+                      key={issue.number}
+                      onPress={() => handleSelectIssue(issue)}
+                      style={{
+                        flexDirection: 'row', alignItems: 'stretch', height: 24,
+                        borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border,
+                        backgroundColor: selected
+                          ? '#007AFF'
+                          : zebra
+                            ? (isLight ? 'rgba(0,0,0,0.028)' : 'rgba(255,255,255,0.04)')
+                            : 'transparent',
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ width: 52, justifyContent: 'center', paddingHorizontal: 7, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: selected ? '#fff' : '#007AFF' }}>
+                          #{issue.number}
+                        </Text>
+                      </View>
+                      <View style={{ flex: 1, justifyContent: 'center', paddingHorizontal: 7, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border }}>
+                        <Text style={{ fontSize: 12, color: selected ? '#fff' : C.text }} numberOfLines={1}>
+                          {issue.title}
+                        </Text>
+                      </View>
+                      <View style={{ width: 58, justifyContent: 'center', paddingHorizontal: 7 }}>
+                        <Text style={{ fontSize: 11, color: selected ? 'rgba(255,255,255,0.75)' : C.text4, textAlign: 'right' }}>
+                          {relDate(issue.created_at)}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+
+              {/* 더 보기 */}
+              {issueList.length > 0 && (hasMore || (issuesLoading && issueList.length > 0)) && (
+                <TouchableOpacity
+                  onPress={handleLoadMore}
+                  disabled={issuesLoading}
+                  style={{ height: 28, alignItems: 'center', justifyContent: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border, backgroundColor: C.bg3 }}
+                >
+                  <Text style={{ color: issuesLoading ? C.text4 : '#007AFF', fontSize: 12, fontWeight: '600' }}>
+                    {issuesLoading ? '···' : '더 보기'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+        </View>
+
+        {/* 이슈 번호 직접 입력 */}
+        <View>
+          <Text style={[styles.panelSectionLabel, { color: C.labelColor, marginTop: 0 }]}>
+            {mainIssue ? '이슈 번호 변경' : '번호로 직접 연결'}
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, borderRadius: 8, borderWidth: 1, borderColor: C.border, backgroundColor: C.input, paddingHorizontal: 10, paddingVertical: 8 }}>
+              <Text style={{ color: C.text3, fontSize: 13, fontWeight: '700', marginRight: 4 }}>#</Text>
+              <TextInput
+                style={{ flex: 1, color: C.text, fontSize: 13, padding: 0 }}
+                value={linkNumber}
+                onChangeText={setLinkNumber}
+                placeholder="이슈 번호"
+                placeholderTextColor={C.text4}
+                keyboardType="numeric"
+                returnKeyType="done"
+                onSubmitEditing={handleLink}
+              />
+            </View>
+            <TouchableOpacity
+              onPress={handleLink}
+              disabled={!localRepo || !linkNumber.trim()}
+              style={{ backgroundColor: '#007AFF', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9, opacity: (!localRepo || !linkNumber.trim()) ? 0.4 : 1 }}
+            >
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>연결</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* 구분선 */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: C.border }} />
+          <Text style={{ color: C.text4, fontSize: 11 }}>또는</Text>
+          <View style={{ flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: C.border }} />
+        </View>
+
+        {/* Claude로 이슈 생성 */}
+        <TouchableOpacity
+          onPress={onGenerate}
+          disabled={isGenerating || !localRepo || Platform.OS === 'web'}
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 10, borderWidth: 1, borderColor: Platform.OS === 'web' ? C.border : 'rgba(0,122,255,0.3)', backgroundColor: Platform.OS === 'web' ? C.bg3 : 'rgba(0,122,255,0.08)', paddingVertical: 14, opacity: (isGenerating || !localRepo || Platform.OS === 'web') ? 0.4 : 1 }}
+        >
+          <Ionicons name="sparkles" size={15} color={Platform.OS === 'web' ? C.text3 : '#007AFF'} />
+          <Text style={{ color: Platform.OS === 'web' ? C.text3 : '#007AFF', fontSize: 14, fontWeight: '600' }}>
+            {Platform.OS === 'web' ? 'Claude 이슈 생성 (앱 전용)' : isGenerating ? 'Claude 작성 중...' : 'Claude로 이슈 생성'}
+          </Text>
+        </TouchableOpacity>
 
       </ScrollView>
     </View>
@@ -652,17 +579,12 @@ function GitHubIssuePanel({ repos, issueRepo, onRepoChange, allIssues, isGenerat
 }
 
 // ─── 오른쪽 상세 패널 ──────────────────────────────────────
-export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onClose, onOpenSettings, links, onLinksChange, subTasks, onAddSubTask, onSelectChild }: {
+export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onClose, onOpenSettings }: {
   task: Task; repos: string[]; mode: AppMode; isLight: boolean;
   onSave: (data: Partial<Task>, issues: DraftIssue[]) => Promise<string | null>;
   onDelete: (id: string) => void;
   onClose: () => void;
   onOpenSettings: () => void;
-  links: TaskLink[];
-  onLinksChange: (links: TaskLink[]) => void;
-  subTasks?: Task[];
-  onAddSubTask?: (title: string) => void;
-  onSelectChild?: (task: Task) => void;
 }) {
   const [editTitle,     setEditTitle]     = useState(task.title);
   const [editNote,      setEditNote]      = useState(task.note ?? '');
@@ -675,7 +597,6 @@ export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onCl
   const [editType,      setEditType]      = useState<TaskType>(task.type ?? 'etc');
   const [issueRepo,     setIssueRepo]     = useState(repos[0] ?? '');
   const [isGenerating,  setIsGenerating]  = useState(false);
-  const canCallClaudeApi = Platform.OS !== 'web' || (typeof window !== 'undefined' && window.location.hostname === 'localhost');
   const [generateMsg,   setGenerateMsg]   = useState('');
   const [issuePreview,  setIssuePreview]  = useState<{ title: string; body: string } | null>(null);
   const [isPosting,     setIsPosting]     = useState(false);
@@ -691,18 +612,6 @@ export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onCl
   const [mainIssue,     setMainIssue]     = useState<DraftIssue | null>(() => { const all = _initIssues(task); return all[0] ?? null; });
   const [relatedIssues, setRelatedIssues] = useState<DraftIssue[]>(() => { const all = _initIssues(task); return all.slice(1); });
   const [githubPanelOpen, setGithubPanelOpen] = useState(false);
-  const [addingLink, setAddingLink] = useState(false);
-  const [newLinkUrl, setNewLinkUrl] = useState('');
-  const [newLinkLabel, setNewLinkLabel] = useState('');
-  const [addingSubTask, setAddingSubTask] = useState(false);
-  const [subTaskInput, setSubTaskInput] = useState('');
-  const addLink = () => {
-    const url = newLinkUrl.trim();
-    if (!url) return;
-    onLinksChange([...links, { url, label: newLinkLabel.trim() || undefined }]);
-    setNewLinkUrl(''); setNewLinkLabel(''); setAddingLink(false);
-  };
-  const removeLink = (idx: number) => onLinksChange(links.filter((_, i) => i !== idx));
 
   useEffect(() => {
     setEditTitle(task.title);
@@ -797,7 +706,6 @@ export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onCl
       };
       const { title: issueTitle, body } = await generateIssue(apiKey, taskData as any, issueRepo);
       setIssuePreview({ title: issueTitle, body });
-      setGithubPanelOpen(false);
     } catch (e: any) {
       setGenerateMsg(`오류: ${e.message}`);
     } finally {
@@ -833,23 +741,33 @@ export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onCl
               numberOfLines={1} placeholder="제목" placeholderTextColor={C.text3}
             />
 
-            {mode === 'work' && (() => {
-              const headerIssues = [mainIssue, ...relatedIssues].filter(Boolean) as DraftIssue[];
-              return (
+            {mode === 'work' && (
+              mainIssue ? (
+                <View style={[styles.issueBadge, { backgroundColor: 'rgba(48,209,88,0.1)', borderColor: 'rgba(48,209,88,0.28)' }]}>
+                  <TouchableOpacity
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                    onPress={() => setGithubPanelOpen(true)}
+                  >
+                    <Ionicons name="logo-github" size={11} color="#30D158" />
+                    <Text style={[styles.issueBadgeText, { color: '#30D158' }]} numberOfLines={1}>
+                      {mainIssue.repo.split('/')[1]} #{mainIssue.number}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setMainIssue(null)} style={{ padding: 2 }}>
+                    <Ionicons name="close" size={10} color="rgba(48,209,88,0.55)" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
                 <TouchableOpacity
                   onPress={() => setGithubPanelOpen(true)}
                   style={[styles.issueBadge, { backgroundColor: C.bg3, borderColor: C.border }]}
                 >
                   <Ionicons name="logo-github" size={11} color={C.text3} />
-                  <Text style={[styles.issueBadgeText, { color: C.text3 }]} numberOfLines={1}>
-                    {headerIssues.length > 0
-                      ? headerIssues.map((i) => `#${i.number}`).join('  ')
-                      : '연결 이슈 없음'}
-                  </Text>
-                  {headerIssues.length === 0 && <Ionicons name="add" size={10} color={C.text4} />}
+                  <Text style={[styles.issueBadgeText, { color: C.text3 }]}>연결 이슈 없음</Text>
+                  <Ionicons name="add" size={10} color={C.text4} />
                 </TouchableOpacity>
-              );
-            })()}
+              )
+            )}
 
             <TouchableOpacity onPress={() => onDelete(task.id)} style={styles.detailIconBtn}>
               <Ionicons name="trash-outline" size={14} color="#FF453A" />
@@ -869,55 +787,6 @@ export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onCl
             <TextInput style={[styles.panelNoteInput, { backgroundColor: C.input, color: C.text2, borderColor: C.border }]}
               value={editNote} onChangeText={setEditNote} placeholder="메모 (선택)" placeholderTextColor={C.text4} />
 
-            {/* 링크 섹션 */}
-            <Text style={[styles.panelSectionLabel, { color: C.labelColor }]}>링크</Text>
-            <View style={{ gap: 6, marginBottom: 4 }}>
-              {links.map((link, idx) => (
-                <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.bg3, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
-                  <Ionicons name="link-outline" size={13} color={C.text3} />
-                  <View style={{ flex: 1, overflow: 'hidden' }}>
-                    {link.label ? <Text style={{ fontSize: 10, color: C.text3, marginBottom: 1 }}>{link.label}</Text> : null}
-                    <Text style={{ fontSize: 12, color: '#0A84FF' }} numberOfLines={1}>{link.url}</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => Linking.openURL(link.url)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                    <Ionicons name="open-outline" size={14} color={C.text3} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => removeLink(idx)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                    <Ionicons name="close" size={14} color={C.text4} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              {addingLink ? (
-                <View style={{ backgroundColor: C.bg3, borderRadius: 8, padding: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border, gap: 6 }}>
-                  <TextInput
-                    value={newLinkUrl} onChangeText={setNewLinkUrl}
-                    placeholder="URL" placeholderTextColor={C.text4}
-                    style={{ fontSize: 13, color: C.text, backgroundColor: C.input, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 7, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}
-                    autoCapitalize="none" autoCorrect={false} keyboardType="url"
-                  />
-                  <TextInput
-                    value={newLinkLabel} onChangeText={setNewLinkLabel}
-                    placeholder="레이블 (선택) e.g. Slack 쓰레드" placeholderTextColor={C.text4}
-                    style={{ fontSize: 13, color: C.text, backgroundColor: C.input, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 7, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}
-                  />
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    <TouchableOpacity onPress={addLink} style={{ flex: 1, backgroundColor: '#0A84FF', borderRadius: 6, paddingVertical: 8, alignItems: 'center' }}>
-                      <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>추가</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => { setAddingLink(false); setNewLinkUrl(''); setNewLinkLabel(''); }}
-                      style={{ flex: 1, backgroundColor: C.bg3, borderRadius: 6, paddingVertical: 8, alignItems: 'center', borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
-                      <Text style={{ color: C.text3, fontSize: 13 }}>취소</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <TouchableOpacity onPress={() => setAddingLink(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 2 }}>
-                  <Ionicons name="add-circle-outline" size={15} color={C.text3} />
-                  <Text style={{ fontSize: 13, color: C.text3 }}>링크 추가</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
             <View style={[styles.twoColRow, isMobile && { flexDirection: 'column' }]}>
               {/* 왼쪽: 프로덕트 / 마일스톤 / 연관사업 / 중요도 / 날짜 */}
               <View style={styles.twoColPane}>
@@ -925,7 +794,7 @@ export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onCl
                   <Text style={[styles.panelSectionLabel, { color: C.labelColor }]}>프로덕트</Text>
                   <View style={styles.chipRow}>
                     {PRODUCTS.map((v) => (
-                      <Chip key={v} label={(PRODUCT_EMOJI[v] ? PRODUCT_EMOJI[v] + ' ' : '') + v} active={editProduct === v} C={C}
+                      <Chip key={v} label={v} active={editProduct === v} C={C}
                         onPress={() => setEditProduct(editProduct === v ? null : v)} />
                     ))}
                   </View>
@@ -1073,65 +942,6 @@ export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onCl
               </View>
             </View>
 
-            {/* 하위 작업 */}
-            {((subTasks && subTasks.length > 0) || onAddSubTask) && (
-              <View style={{ marginTop: 4 }}>
-                <Text style={[styles.panelSectionLabel, { color: C.labelColor }]}>하위 작업</Text>
-                <View style={{ gap: 4 }}>
-                  {subTasks?.map((child) => {
-                    const csm = STATUS_META[child.status] ?? STATUS_META['todo'];
-                    const cIsDone = child.status === 'done';
-                    return (
-                      <TouchableOpacity
-                        key={child.id}
-                        onPress={() => onSelectChild?.(child)}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.bg3, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}
-                      >
-                        <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, backgroundColor: csm.bg, borderColor: csm.border }}>
-                          <Text style={{ fontSize: 10, color: csm.color, fontWeight: '600' }}>{csm.label}</Text>
-                        </View>
-                        <Text style={{ flex: 1, fontSize: 13, color: cIsDone ? C.text3 : C.text2, textDecorationLine: cIsDone ? 'line-through' : 'none' }} numberOfLines={1}>{child.title}</Text>
-                        <Ionicons name="chevron-forward" size={12} color={C.text4} />
-                      </TouchableOpacity>
-                    );
-                  })}
-                  {onAddSubTask && (
-                    addingSubTask ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.bg3, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
-                        <TextInput
-                          style={{ flex: 1, fontSize: 13, color: C.text, padding: 0 }}
-                          value={subTaskInput}
-                          onChangeText={setSubTaskInput}
-                          placeholder="하위 작업 제목..."
-                          placeholderTextColor={C.text4}
-                          autoFocus
-                          returnKeyType="done"
-                          onSubmitEditing={() => {
-                            const t = subTaskInput.trim();
-                            if (t) { onAddSubTask(t); setSubTaskInput(''); setAddingSubTask(false); }
-                          }}
-                        />
-                        <TouchableOpacity onPress={() => {
-                          const t = subTaskInput.trim();
-                          if (t) { onAddSubTask(t); setSubTaskInput(''); setAddingSubTask(false); }
-                        }}>
-                          <Ionicons name="checkmark-circle" size={18} color="#007AFF" />
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => { setAddingSubTask(false); setSubTaskInput(''); }}>
-                          <Ionicons name="close-circle" size={18} color={C.text4} />
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <TouchableOpacity onPress={() => setAddingSubTask(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 }}>
-                        <Ionicons name="add-circle-outline" size={15} color={C.text3} />
-                        <Text style={{ fontSize: 13, color: C.text3 }}>하위 작업 추가</Text>
-                      </TouchableOpacity>
-                    )
-                  )}
-                </View>
-              </View>
-            )}
-
             <TouchableOpacity style={[styles.saveBtn, isSaving && { opacity: 0.5 }]}
               onPress={handleSave} disabled={isSaving}>
               <Text style={styles.saveBtnText}>{isSaving ? '저장 중...' : '저장'}</Text>
@@ -1144,26 +954,20 @@ export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onCl
               repos={repos}
               issueRepo={issueRepo}
               onRepoChange={setIssueRepo}
-              allIssues={[mainIssue, ...relatedIssues].filter(Boolean) as DraftIssue[]}
+              mainIssue={mainIssue}
               isGenerating={isGenerating}
-              generateMsg={generateMsg}
               isLight={isLight}
               C={C}
               onClose={() => setGithubPanelOpen(false)}
               onLink={(repo, num) => {
-                const d = { id: uid(), repo, number: String(num) };
-                if (!mainIssue) setMainIssue(d);
-                else setRelatedIssues((p) => [...p, d]);
+                setMainIssue({ id: uid(), repo, number: String(num) });
+                setGithubPanelOpen(false);
               }}
-              onUnlink={(id) => {
-                if (mainIssue?.id === id) {
-                  setMainIssue(relatedIssues[0] ?? null);
-                  setRelatedIssues((p) => p.slice(1));
-                } else {
-                  setRelatedIssues((p) => p.filter((i) => i.id !== id));
-                }
+              onGenerate={() => {
+                setGithubPanelOpen(false);
+                handleGenerateIssue();
               }}
-              onGenerate={handleGenerateIssue}
+              onOpenIssue={mainIssue ? () => Linking.openURL(issueUrl(mainIssue.repo, Number(mainIssue.number))).catch(() => {}) : undefined}
             />
           )}
           {issuePreview && (

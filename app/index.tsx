@@ -1,19 +1,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, FlatList, TouchableOpacity, TextInput, Pressable,
+  View, Text, FlatList, TouchableOpacity, TextInput,
   StyleSheet, SafeAreaView, Modal, ScrollView,
   KeyboardAvoidingView, Platform, Alert, Linking, useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase, Task, TaskType, TaskLink } from '../lib/supabase';
+import { supabase, Task, TaskType } from '../lib/supabase';
 import { fetchAllRepos, getToken, saveToken, issueUrl, PINNED_REPOS } from '../lib/github';
 import { getClaudeKey, saveClaudeKey, getProxyHost, saveProxyHost } from '../lib/claude';
 import { Ionicons } from '@expo/vector-icons';
 import {
   AppMode, TimeView, SortKey, SortDir, FilterMap, DraftIssue, ThemeColors,
-  DARK_C, LIGHT_C, PRODUCTS, MILESTONES, BUSINESSES, STATUSES, TASK_TYPES, SELECTABLE_TYPES,
-  STATUS_META, COL, TIME_VIEWS, PRODUCT_DOT, PRODUCT_EMOJI, PRODUCT_SHORT, MILESTONE_DOT, BUSINESS_DOT,
-  today, todayKST, addWorkingDays, fmtDisplay, isInTimeView,
+  DARK_C, LIGHT_C, PRODUCTS, MILESTONES, STATUSES, TASK_TYPES, SELECTABLE_TYPES,
+  STATUS_META, COL, TIME_VIEWS, PRODUCT_DOT, MILESTONE_DOT,
+  today, fmtDisplay, isInTimeView,
 } from '../lib/constants';
 import { styles } from '../lib/styles';
 import { MonthCalendar, WeekView, DayView } from '../components/CalendarViews';
@@ -155,42 +155,6 @@ export default function HomeScreen() {
   const [isLight, setIsLight] = useState(false);
   useEffect(() => { AsyncStorage.getItem('flux_light').then((v) => { if (v === '1') setIsLight(true); }); }, []);
   const toggleLight = async () => { const next = !isLight; setIsLight(next); await AsyncStorage.setItem('flux_light', next ? '1' : '0'); };
-
-  const [flagged, setFlagged] = useState<Set<string>>(new Set());
-  useEffect(() => { AsyncStorage.getItem('flux_flagged').then((v) => { if (v) setFlagged(new Set(JSON.parse(v))); }); }, []);
-  const toggleFlag = async (id: string) => {
-    setFlagged((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      AsyncStorage.setItem('flux_flagged', JSON.stringify([...next]));
-      return next;
-    });
-  };
-
-  const [allLinks, setAllLinks] = useState<Record<string, TaskLink[]>>({});
-  useEffect(() => { AsyncStorage.getItem('flux_links').then((v) => { if (v) setAllLinks(JSON.parse(v)); }); }, []);
-  const updateTaskLinks = async (taskId: string, links: TaskLink[]) => {
-    const next = { ...allLinks, [taskId]: links };
-    setAllLinks(next);
-    await AsyncStorage.setItem('flux_links', JSON.stringify(next));
-  };
-
-  const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
-  const toggleExpand = (id: string) => setExpandedParents((prev) => {
-    const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
-    return next;
-  });
-
-  const [checklistPopup, setChecklistPopup] = useState<{ taskId: string; pageX: number; pageY: number } | null>(null);
-  const toggleCheckItem = async (taskId: string, itemIdx: number) => {
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
-    const newChecklist = task.checklist.map((c, i) => i === itemIdx ? { ...c, done: !c.done } : c);
-    setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, checklist: newChecklist } : t));
-    if (selectedTask?.id === taskId) setSelectedTask((prev) => prev ? { ...prev, checklist: newChecklist } : prev);
-    await supabase.from('tasks').update({ checklist: newChecklist, updated_at: new Date().toISOString() }).eq('id', taskId);
-  };
   const C = isLight ? LIGHT_C : DARK_C;
 
   const { width } = useWindowDimensions();
@@ -233,19 +197,8 @@ export default function HomeScreen() {
     else { setSortKey(key); setSortDir('asc'); }
   };
 
-  // 자식 태스크 맵 (parent_id → children)
-  const childrenMap = new Map<string, Task[]>();
-  tasks.forEach((t) => {
-    if (t.parent_id) {
-      const arr = childrenMap.get(t.parent_id) ?? [];
-      arr.push(t);
-      childrenMap.set(t.parent_id, arr);
-    }
-  });
-
   const processedTasks = [...tasks]
     .filter((t) => {
-      if (t.parent_id) return false; // 자식 태스크는 부모 행에서 렌더링
       if (!isInTimeView(t, timeView)) return false;
       if (filters.product   && t.product   !== filters.product)  return false;
       if (filters.milestone && t.milestone !== filters.milestone) return false;
@@ -261,10 +214,6 @@ export default function HomeScreen() {
       const bv = sortKey === 'title' ? b.title : (b as any)[sortKey] ?? '';
       return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
     });
-
-  const rowNums = new Map<string, number>();
-  let _n = 0;
-  processedTasks.forEach((t) => { rowNums.set(t.id, ++_n); });
 
   const quickAdd = async (title: string, type: TaskType, dueDate?: string) => {
     const payload: any = { title, status: 'todo', type, mode };
@@ -286,14 +235,13 @@ export default function HomeScreen() {
     try {
       const { error } = await supabase.from('tasks').update({ ...data, updated_at: new Date().toISOString() }).eq('id', selectedTask.id);
       if (error) { console.error('save error:', error); return error.message; }
-      const { error: delError } = await supabase.from('task_issues').delete().eq('task_id', selectedTask.id);
-      if (delError) { console.error('task_issues delete error:', delError); return delError.message; }
+      await supabase.from('task_issues').delete().eq('task_id', selectedTask.id);
       const valid = draftIssues.filter((d) => d.repo && d.number);
       if (valid.length > 0) {
-        const { error: insError } = await supabase.from('task_issues').insert(valid.map((d) => ({
-          task_id: selectedTask.id, github_repo: d.repo, github_issue_number: parseInt(d.number, 10),
+        const { error: issueError } = await supabase.from('task_issues').insert(valid.map((d) => ({
+          task_id: selectedTask.id, github_repo: d.repo, github_issue_number: parseInt(d.number),
         })));
-        if (insError) { console.error('task_issues insert error:', insError); return insError.message; }
+        if (issueError) return issueError.message;
       }
       await fetchTasks();
       setSelectedTask((prev) => prev ? { ...prev, ...data } : null);
@@ -303,14 +251,6 @@ export default function HomeScreen() {
       return e?.message ?? '저장 중 오류 발생';
     }
   };
-  const addSubTask = async (parentId: string, title: string) => {
-    const { error } = await supabase.from('tasks').insert({ title, status: 'todo', type: 'task', mode, parent_id: parentId });
-    if (!error) {
-      await fetchTasks();
-      setExpandedParents((prev) => new Set([...prev, parentId]));
-    }
-  };
-
   const deleteTask = async (id: string) => {
     const confirmed = Platform.OS === 'web'
       ? window.confirm('이 항목을 삭제할까요?')
@@ -321,7 +261,6 @@ export default function HomeScreen() {
           ]);
         });
     if (!confirmed) return;
-    await supabase.from('tasks').delete().eq('parent_id', id); // 자식 먼저 삭제
     await supabase.from('tasks').delete().eq('id', id);
     setSelectedTask(null);
     fetchTasks();
@@ -339,262 +278,128 @@ export default function HomeScreen() {
 
   const hasFilters = Object.values(filters).some(Boolean) || !!searchText;
 
-  const renderRow = ({ item, index }: { item: Task; index: number }) => {
+  const renderRow = ({ item }: { item: Task }) => {
     const issues = item.task_issues ?? [];
     const sm = STATUS_META[item.status] ?? STATUS_META['todo'];
     const isSelected = selectedTask?.id === item.id;
-    const isDone = item.status === 'done';
-    const isDimmed = isDone || item.type === 'schedule';
-    const dimColor = isDimmed ? C.text3 : C.text;
-    const productLabel = (p: string) => (PRODUCT_EMOJI[p] ?? '') + ' ' + (PRODUCT_SHORT[p] ?? p);
-    const enabledChecklist = item.checklist
-      .map((ci, i) => ({ ...ci, originalIndex: i }))
-      .filter((ci) => ci.enabled);
-    const hasChecklist = enabledChecklist.length > 0;
-    const doneCount = enabledChecklist.filter((ci) => ci.done).length;
-    const openChecklist = (e: any) => { e.stopPropagation?.(); setChecklistPopup({ taskId: item.id, pageX: e.nativeEvent.pageX, pageY: e.nativeEvent.pageY }); };
-    const itemChildren = childrenMap.get(item.id) ?? [];
-    const isExpanded = expandedParents.has(item.id);
-    const hasChildren = itemChildren.length > 0;
 
     if (isMobile) {
       const productDot = item.product ? (PRODUCT_DOT[item.product] ?? '#8E8E93') : null;
       const milestoneDot = item.milestone ? (MILESTONE_DOT[item.milestone] ?? '#8E8E93') : null;
+      const issueNums = issues.map((i) => `#${i.github_issue_number}`).join(' ');
       return (
-        <View>
-          <TouchableOpacity
-            style={[
-              { paddingVertical: 10, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.rowBorder },
-              isSelected && { backgroundColor: 'rgba(0,122,255,0.10)' },
-            ]}
-            onPress={() => setSelectedTask(isSelected ? null : item)}
-          >
-            {/* Line 1: title + issue badge + status */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-              <Text style={{ fontSize: 12, color: C.text4, minWidth: 20, textAlign: 'right', fontVariant: ['tabular-nums'] }}>{rowNums.get(item.id)}</Text>
-              {item.type === 'schedule' && <Ionicons name="calendar-outline" size={13} color={C.text3} />}
-              <Text style={{ flex: 1, fontSize: 15, letterSpacing: -0.3, color: dimColor, textDecorationLine: isDone ? 'line-through' : 'none' }} numberOfLines={1}>{item.title}</Text>
-              {hasChildren && (
-                <TouchableOpacity onPress={(e) => { e.stopPropagation?.(); toggleExpand(item.id); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: C.bg3, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
-                    <Text style={{ fontSize: 10, color: C.text3, fontVariant: ['tabular-nums'] }}>{itemChildren.length}</Text>
-                    <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={9} color={C.text3} />
-                  </View>
-                </TouchableOpacity>
-              )}
-              {hasChecklist && (
-                <TouchableOpacity onPress={openChecklist} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                  <Text style={{ fontSize: 11, color: doneCount === enabledChecklist.length ? '#30D158' : C.text4, fontVariant: ['tabular-nums'] }}>{doneCount}/{enabledChecklist.length}</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={(e) => { e.stopPropagation?.(); toggleFlag(item.id); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Ionicons name={flagged.has(item.id) ? 'star' : 'star-outline'} size={13} color={flagged.has(item.id) ? '#FF9F0A' : C.text4} />
-              </TouchableOpacity>
-              {mode === 'work' && issues.map((issue) => (
-                <TouchableOpacity key={issue.id} onPress={() => Linking.openURL(issueUrl(issue.github_repo, issue.github_issue_number))}
-                  style={{ backgroundColor: C.chipBg, borderWidth: 1, borderColor: C.chipBorder, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
-                  <Text style={{ fontSize: 11, color: C.text3, fontVariant: ['tabular-nums'] }}>#{issue.github_issue_number}</Text>
-                </TouchableOpacity>
-              ))}
-              {item.type !== 'schedule' ? (
-                <View style={[styles.statusPill, { backgroundColor: sm.bg, borderColor: sm.border }]}>
-                  <Text style={[styles.statusPillText, { color: sm.color }]}>{sm.label}</Text>
-                </View>
-              ) : (
-                <View style={[styles.statusPill, { backgroundColor: 'rgba(90,200,250,0.10)', borderColor: 'rgba(90,200,250,0.28)' }]}>
-                  <Text style={[styles.statusPillText, { color: '#5AC8FA' }]}>일정</Text>
-                </View>
-              )}
-            </View>
-            {/* Line 2: product chip + milestone chip */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              {productDot ? (
-                <View style={{ backgroundColor: C.chipBg, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, borderWidth: StyleSheet.hairlineWidth, borderColor: productDot + '55' }}>
-                  <Text style={{ fontSize: 11, color: C.text3, letterSpacing: -0.2 }} numberOfLines={1}>{productLabel(item.product!)}</Text>
-                </View>
-              ) : null}
-              {milestoneDot ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.chipBg, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, borderWidth: StyleSheet.hairlineWidth, borderColor: milestoneDot + '55' }}>
-                  <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: milestoneDot }} />
-                  <Text style={{ fontSize: 11, color: milestoneDot, letterSpacing: -0.2 }}>{item.milestone}</Text>
-                </View>
-              ) : null}
-            </View>
-          </TouchableOpacity>
-          {/* 자식 태스크 (모바일) */}
-          {isExpanded && itemChildren.map((child) => {
-            const csm = STATUS_META[child.status] ?? STATUS_META['todo'];
-            const cIsSelected = selectedTask?.id === child.id;
-            const cIsDone = child.status === 'done';
-            return (
-              <TouchableOpacity
-                key={child.id}
-                style={[
-                  { paddingVertical: 9, paddingHorizontal: 16, paddingLeft: 36, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.rowBorder, backgroundColor: isLight ? 'rgba(0,0,0,0.02)' : 'rgba(255,255,255,0.02)' },
-                  cIsSelected && { backgroundColor: 'rgba(0,122,255,0.10)' },
-                ]}
-                onPress={() => setSelectedTask(cIsSelected ? null : child)}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ fontSize: 11, color: C.text4 }}>└</Text>
-                  <Text style={{ flex: 1, fontSize: 13, color: cIsDone ? C.text3 : C.text2, textDecorationLine: cIsDone ? 'line-through' : 'none' }} numberOfLines={1}>{child.title}</Text>
-                  <View style={[styles.statusPill, { backgroundColor: csm.bg, borderColor: csm.border }]}>
-                    <Text style={[styles.statusPillText, { color: csm.color }]}>{csm.label}</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <TouchableOpacity
+          style={[
+            { paddingVertical: 10, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.rowBorder },
+            item.type === 'schedule' && { borderLeftWidth: 3, borderLeftColor: '#5AC8FA' },
+            isSelected && { backgroundColor: 'rgba(0,122,255,0.10)' },
+          ]}
+          onPress={() => setSelectedTask(isSelected ? null : item)}
+        >
+          {/* Line 1: title + issue badge + status */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+            <Text style={{ flex: 1, fontSize: 15, letterSpacing: -0.3, color: C.text }} numberOfLines={1}>{item.title}</Text>
+            {issueNums ? (
+              <Text style={{ fontSize: 11, color: C.text3, letterSpacing: -0.2 }}>{issueNums}</Text>
+            ) : null}
+            {item.type !== 'schedule' ? (
+              <View style={[styles.statusPill, { backgroundColor: sm.bg, borderColor: sm.border }]}>
+                <Text style={[styles.statusPillText, { color: sm.color }]}>{sm.label}</Text>
+              </View>
+            ) : (
+              <View style={[styles.statusPill, { backgroundColor: 'rgba(90,200,250,0.10)', borderColor: 'rgba(90,200,250,0.28)' }]}>
+                <Text style={[styles.statusPillText, { color: '#5AC8FA' }]}>일정</Text>
+              </View>
+            )}
+          </View>
+          {/* Line 2: product chip + milestone chip */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {productDot ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.chipBg, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, borderWidth: StyleSheet.hairlineWidth, borderColor: productDot + '55' }}>
+                <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: productDot }} />
+                <Text style={{ fontSize: 11, color: productDot, letterSpacing: -0.2 }} numberOfLines={1}>{item.product}</Text>
+              </View>
+            ) : null}
+            {milestoneDot ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.chipBg, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, borderWidth: StyleSheet.hairlineWidth, borderColor: milestoneDot + '55' }}>
+                <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: milestoneDot }} />
+                <Text style={{ fontSize: 11, color: milestoneDot, letterSpacing: -0.2 }}>{item.milestone}</Text>
+              </View>
+            ) : null}
+          </View>
+        </TouchableOpacity>
       );
     }
 
     return (
-      <View>
-        <TouchableOpacity
-          style={[styles.tableRow, { borderBottomColor: C.rowBorder }, isSelected && styles.tableRowSelected, item.type === 'schedule' && styles.tableRowSchedule]}
-          onPress={() => setSelectedTask(isSelected ? null : item)}
-        >
-          {/* 번호 */}
-          <View style={[styles.tableCell, { width: COL.num, justifyContent: 'center', alignItems: 'center' }]}>
-            <Text style={{ fontSize: 12, color: C.text3, textAlign: 'center', fontVariant: ['tabular-nums'] }}>{rowNums.get(item.id)}</Text>
-          </View>
-          {/* 프로덕트 */}
-          <View style={[styles.tableCell, { width: COL.product }]}>
-            {item.product
-              ? <Text style={{ fontSize: 11, color: C.text3, letterSpacing: -0.2 }} numberOfLines={1}>{productLabel(item.product)}</Text>
-              : <Text style={{ fontSize: 11, color: C.text4 }}>—</Text>}
-          </View>
-          {/* 마일스톤 */}
-          <View style={[styles.tableCell, { width: COL.milestone }]}>
-            {item.milestone ? (() => {
-                const dot = MILESTONE_DOT[item.milestone] ?? '#8E8E93';
-                return (
-                  <View style={[styles.tagMilestone, { backgroundColor: dot + '22', borderColor: dot + '66' }]}>
-                    <Text style={[styles.tagMilestoneText, { color: dot }]}>{item.milestone}</Text>
-                  </View>
-                );
-              })() : <Text style={[styles.cellEmpty, { color: C.text4 }]}>—</Text>}
-          </View>
-          {/* 사업 */}
-          <View style={[styles.tableCell, { width: COL.business }]}>
-            {item.business ? (() => {
-              const dot = BUSINESS_DOT[item.business] ?? '#8E8E93';
+      <TouchableOpacity
+        style={[styles.tableRow, { borderBottomColor: C.rowBorder }, isSelected && styles.tableRowSelected, item.type === 'schedule' && styles.tableRowSchedule]}
+        onPress={() => setSelectedTask(isSelected ? null : item)}
+      >
+        {/* 프로덕트 */}
+        <View style={[styles.tableCell, { width: COL.product }]}>
+          {item.product ? (() => {
+              const dot = PRODUCT_DOT[item.product] ?? '#8E8E93';
               return (
-                <View style={[styles.tagMilestone, { backgroundColor: dot + '22', borderColor: dot + '66' }]}>
-                  <Text style={[styles.tagMilestoneText, { color: dot }]} numberOfLines={1}>{item.business}</Text>
+                <View style={[styles.tagProduct, { backgroundColor: C.chipBg, borderColor: dot + '55', flexDirection: 'row', alignItems: 'center', gap: 5 }]}>
+                  <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: dot }} />
+                  <Text style={[styles.tagProductText, { color: dot }]} numberOfLines={1}>{item.product}</Text>
                 </View>
               );
             })() : <Text style={[styles.cellEmpty, { color: C.text4 }]}>—</Text>}
-          </View>
-          {/* 제목 + 연관 이슈 인라인 */}
-          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 6, overflow: 'hidden' }}>
-            {item.type === 'schedule' && <Ionicons name="calendar-outline" size={12} color={C.text3} />}
-            {hasChildren && (
-              <TouchableOpacity onPress={(e) => { e.stopPropagation?.(); toggleExpand(item.id); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Ionicons name={isExpanded ? 'chevron-down' : 'chevron-forward'} size={12} color={C.text4} />
-              </TouchableOpacity>
-            )}
-            <Text style={{ flexShrink: 1, fontSize: 14, letterSpacing: -0.2, color: dimColor, textDecorationLine: isDone ? 'line-through' : 'none' }} numberOfLines={1}>{item.title}</Text>
-            {hasChildren && (
-              <Text style={{ fontSize: 10, color: C.text4, fontVariant: ['tabular-nums'] }}>
-                {itemChildren.filter((c) => c.status === 'done').length}/{itemChildren.length}
-              </Text>
-            )}
-            <TouchableOpacity onPress={(e) => { e.stopPropagation?.(); toggleFlag(item.id); }} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Ionicons name={flagged.has(item.id) ? 'star' : 'star-outline'} size={12} color={flagged.has(item.id) ? '#FF9F0A' : C.text4} />
-            </TouchableOpacity>
-            {hasChecklist && (
-              <TouchableOpacity onPress={openChecklist} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                <Text style={{ fontSize: 11, color: doneCount === enabledChecklist.length ? '#30D158' : C.text4, fontVariant: ['tabular-nums'] }}>{doneCount}/{enabledChecklist.length}</Text>
-              </TouchableOpacity>
-            )}
-            {(allLinks[item.id]?.length ?? 0) > 0 && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                <Ionicons name="link-outline" size={11} color={C.text4} />
-                <Text style={{ fontSize: 10, color: C.text4 }}>{allLinks[item.id].length}</Text>
+        </View>
+        {/* 마일스톤 */}
+        <View style={[styles.tableCell, { width: COL.milestone }]}>
+          {item.milestone ? (() => {
+              const dot = MILESTONE_DOT[item.milestone] ?? '#8E8E93';
+              return (
+                <View style={[styles.tagMilestone, { backgroundColor: C.chipBg, borderColor: dot + '55', flexDirection: 'row', alignItems: 'center', gap: 5 }]}>
+                  <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: dot }} />
+                  <Text style={[styles.tagMilestoneText, { color: dot }]}>{item.milestone}</Text>
+                </View>
+              );
+            })() : <Text style={[styles.cellEmpty, { color: C.text4 }]}>—</Text>}
+        </View>
+        {/* 구분 (타입) */}
+        <View style={[styles.tableCell, { width: COL.type }]}>
+          {(() => {
+            const tm = TASK_TYPES.find((t) => t.value === item.type);
+            return tm ? (
+              <View style={[styles.typeTag, { backgroundColor: C.chipBg, borderColor: C.chipBorder }]}>
+                <Text style={[styles.typeTagText, { color: C.text3 }]}>{tm.label}</Text>
               </View>
-            )}
-            {mode === 'work' && issues.map((issue) => (
-              <TouchableOpacity key={issue.id} onPress={() => Linking.openURL(issueUrl(issue.github_repo, issue.github_issue_number))}
-                style={{ backgroundColor: C.chipBg, borderWidth: 1, borderColor: C.chipBorder, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
-                <Text style={{ fontSize: 11, color: C.text3, fontVariant: ['tabular-nums'] }}>#{issue.github_issue_number}</Text>
+            ) : null;
+          })()}
+        </View>
+        {/* 아이템 제목 */}
+        <View style={[styles.tableCell, styles.tableCellFlex]}>
+          <Text style={[styles.cellTitle, { color: C.text }]} numberOfLines={1}>{item.title}</Text>
+        </View>
+        {/* 상태 */}
+        {item.type !== 'schedule' && (
+          <View style={[styles.tableCell, { width: COL.status }]}>
+            <View style={[styles.statusPill, { backgroundColor: sm.bg, borderColor: sm.border }]}>
+              <Text style={[styles.statusPillText, { color: sm.color }]}>{sm.label}</Text>
+            </View>
+          </View>
+        )}
+        {item.type === 'schedule' && <View style={[styles.tableCell, { width: COL.status }]} />}
+        {/* 연관 이슈 */}
+        {mode === 'work' && (
+          <View style={[styles.tableCell, { width: COL.issue, flexDirection: 'row', flexWrap: 'wrap', gap: 3 }]}>
+            {issues.map((issue) => (
+              <TouchableOpacity key={issue.id} onPress={() => Linking.openURL(issueUrl(issue.github_repo, issue.github_issue_number))}>
+                <View style={styles.tagIssueInline}>
+                  <Ionicons name="logo-github" size={9} color="#007AFF" />
+                  <Text style={styles.tagIssueText}>#{issue.github_issue_number}</Text>
+                </View>
               </TouchableOpacity>
             ))}
           </View>
-          {/* 목표일정 */}
-          <View style={[styles.tableCell, { width: COL.due }]}>
-            {(() => {
-              const raw = item.due_date ?? item.start_date;
-              if (!raw) return <Text style={{ fontSize: 12, color: C.text4 }}>—</Text>;
-              const d = raw.split('T')[0];
-              const [, m, dd] = d.split('-');
-              const t = todayKST();
-              const isPast     = item.status !== 'done' && d < t;
-              const isImminent = !isPast && item.status !== 'done' && d <= addWorkingDays(t, 2);
-              const dateColor  = isPast ? '#D07070' : isImminent ? '#E89B55' : C.text3;
-              return (
-                <Text style={{ fontSize: 12, color: dateColor, fontVariant: ['tabular-nums'], letterSpacing: -0.2, fontWeight: (isPast || isImminent) ? '500' : '400' }}>
-                  {`${m}.${dd}`}
-                </Text>
-              );
-            })()}
-          </View>
-          {/* 상태 */}
-          {item.type !== 'schedule' && (
-            <View style={[styles.tableCell, { width: COL.status }]}>
-              <View style={[styles.tagProduct, { backgroundColor: sm.bg, borderColor: sm.border }]}>
-                <Text style={[styles.tagProductText, { color: sm.color }]}>{sm.label}</Text>
-              </View>
-            </View>
-          )}
-          {item.type === 'schedule' && (
-            <View style={[styles.tableCell, { width: COL.status }]}>
-              <Text style={[styles.cellEmpty, { color: C.text4 }]}>—</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-
-        {/* 자식 태스크 (데스크톱) */}
-        {isExpanded && itemChildren.map((child) => {
-          const csm = STATUS_META[child.status] ?? STATUS_META['todo'];
-          const cIsSelected = selectedTask?.id === child.id;
-          const cIsDone = child.status === 'done';
-          return (
-            <TouchableOpacity
-              key={child.id}
-              style={[styles.tableRow, { borderBottomColor: C.rowBorder, backgroundColor: isLight ? 'rgba(0,0,0,0.015)' : 'rgba(255,255,255,0.015)' }, cIsSelected && styles.tableRowSelected]}
-              onPress={() => setSelectedTask(cIsSelected ? null : child)}
-            >
-              <View style={[styles.tableCell, { width: COL.num, justifyContent: 'center', alignItems: 'center' }]}>
-                <Text style={{ fontSize: 12, color: C.text4 }}>└</Text>
-              </View>
-              <View style={[styles.tableCell, { width: COL.product }]} />
-              <View style={[styles.tableCell, { width: COL.milestone }]} />
-              <View style={[styles.tableCell, { width: COL.business }]} />
-              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 6, paddingLeft: 22, overflow: 'hidden' }}>
-                <Text style={{ flexShrink: 1, fontSize: 13, letterSpacing: -0.2, color: cIsDone ? C.text3 : C.text2, textDecorationLine: cIsDone ? 'line-through' : 'none' }} numberOfLines={1}>{child.title}</Text>
-              </View>
-              <View style={[styles.tableCell, { width: COL.due }]}>
-                {(() => {
-                  const raw = child.due_date ?? child.start_date;
-                  if (!raw) return <Text style={{ fontSize: 12, color: C.text4 }}>—</Text>;
-                  const [, m, dd] = raw.split('T')[0].split('-');
-                  return <Text style={{ fontSize: 12, color: C.text4, fontVariant: ['tabular-nums'] }}>{`${m}.${dd}`}</Text>;
-                })()}
-              </View>
-              <View style={[styles.tableCell, { width: COL.status }]}>
-                <View style={[styles.tagProduct, { backgroundColor: csm.bg, borderColor: csm.border }]}>
-                  <Text style={[styles.tagProductText, { color: csm.color }]}>{csm.label}</Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+        )}
+      </TouchableOpacity>
     );
   };
-
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: C.bg }]}>
@@ -612,19 +417,6 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <View style={[styles.searchBox, { backgroundColor: C.searchBg, borderColor: C.border }]}>
-                  <Ionicons name="search" size={13} color={C.text3} />
-                  <TextInput style={[styles.searchInput, { color: C.text }]} placeholder="검색" placeholderTextColor={C.text3}
-                    value={searchText} onChangeText={setSearchText} />
-                  {searchText ? <TouchableOpacity onPress={() => setSearchText('')}>
-                    <Ionicons name="close-circle" size={13} color={C.text3} />
-                  </TouchableOpacity> : null}
-                </View>
-                {hasFilters && (
-                  <TouchableOpacity onPress={() => { setFilters({}); setSearchText(''); }} style={styles.clearAllBtn}>
-                    <Text style={styles.clearAllText}>초기화</Text>
-                  </TouchableOpacity>
-                )}
                 <View style={[styles.timeViewTabs, { backgroundColor: C.bg3, borderColor: C.border2 }]}>
                   {TIME_VIEWS.map((tv) => (
                     <TouchableOpacity
@@ -643,6 +435,26 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+            {timeView === 'all' && (
+              <View style={styles.headerRight}>
+                <View style={[styles.searchBox, { backgroundColor: C.searchBg, borderColor: C.border }]}>
+                  <Ionicons name="search" size={13} color={C.text3} />
+                  <TextInput style={[styles.searchInput, { color: C.text }]} placeholder="아이템 검색" placeholderTextColor={C.text3}
+                    value={searchText} onChangeText={setSearchText} />
+                  {searchText ? <TouchableOpacity onPress={() => setSearchText('')}>
+                    <Ionicons name="close-circle" size={13} color={C.text3} />
+                  </TouchableOpacity> : null}
+                </View>
+                {hasFilters && (
+                  <TouchableOpacity onPress={() => { setFilters({}); setSearchText(''); }} style={styles.clearAllBtn}>
+                    <Text style={styles.clearAllText}>초기화</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={openAdd} style={[styles.addBtn, isLight && { backgroundColor: '#333' }]}>
+                  <Ionicons name="add" size={18} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           {timeView === 'monthly' ? (
@@ -680,61 +492,56 @@ export default function HomeScreen() {
             />
           ) : (
             <>
+              <Text style={[styles.rowCount, { color: C.text3 }]}>{processedTasks.length}개 항목</Text>
+
               {/* 컬럼 헤더 (필터+정렬 통합) */}
               {!isMobile && <View style={[styles.colHeaderRow, { borderColor: C.rowBorder }]}>
-                <View style={{ width: COL.num }} />
                 <View style={{ width: COL.product }}>
-                  <ColFilter asHeader C={C} label="Product" options={PRODUCTS}
-                    displayOptions={PRODUCTS.map((p) => (PRODUCT_EMOJI[p] ? PRODUCT_EMOJI[p] + ' ' + p : p))}
+                  <ColFilter asHeader C={C} label="프로덕트" options={PRODUCTS}
                     value={filters.product} onSelect={(v) => setFilters((f) => ({ ...f, product: v }))}
                     sortKey="product" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
                 </View>
                 <View style={{ width: COL.milestone }}>
-                  <ColFilter asHeader C={C} label="Milestone" options={MILESTONES}
+                  <ColFilter asHeader C={C} label="마일스톤" options={MILESTONES}
                     value={filters.milestone} onSelect={(v) => setFilters((f) => ({ ...f, milestone: v }))}
                     sortKey="milestone" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
                 </View>
-                <View style={{ width: COL.business }}>
-                  <ColFilter asHeader C={C} label="Initiative" options={BUSINESSES}
-                    value={filters.business} onSelect={(v) => setFilters((f) => ({ ...f, business: v }))}
-                    sortKey="business" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
+                <View style={{ width: COL.type }}>
+                  <ColFilter asHeader C={C} label="구분" options={TASK_TYPES.map((t) => t.label)}
+                    value={filters.type} onSelect={(v) => setFilters((f) => ({ ...f, type: v }))}
+                    sortKey="type" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
                 </View>
                 <TouchableOpacity style={[styles.colHeaderCell, styles.colHeaderCellFlex]} onPress={() => handleSort('title')}>
-                  <Text style={[styles.colHeaderLabel, { color: C.text3 }, sortKey === 'title' && { color: '#007AFF' }]}>Item</Text>
+                  <Text style={[styles.colHeaderLabel, { color: C.text3 }, sortKey === 'title' && { color: '#007AFF' }]}>아이템</Text>
                   {sortKey === 'title' && <Ionicons name={sortDir === 'asc' ? 'arrow-up' : 'arrow-down'} size={10} color="#007AFF" />}
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.colHeaderCell, { width: COL.due }]} onPress={() => handleSort('due_date')}>
-                  <Text style={[styles.colHeaderLabel, { color: C.text3 }, sortKey === 'due_date' && { color: '#007AFF' }]}>Due date</Text>
-                  {sortKey === 'due_date' && <Ionicons name={sortDir === 'asc' ? 'arrow-up' : 'arrow-down'} size={10} color="#007AFF" />}
-                </TouchableOpacity>
                 <View style={{ width: COL.status }}>
-                  <ColFilter asHeader C={C} label="Status" options={STATUSES.map((s) => s.label)}
+                  <ColFilter asHeader C={C} label="상태" options={STATUSES.map((s) => s.label)}
                     value={filters.status} onSelect={(v) => setFilters((f) => ({ ...f, status: v }))}
                     sortKey="status" currentSort={sortKey} currentDir={sortDir} onSort={handleSort} />
                 </View>
+                {mode === 'work' && (
+                  <View style={[styles.colHeaderCell, { width: COL.issue }]}>
+                    <Text style={[styles.colHeaderLabel, { color: C.text3 }]}>이슈</Text>
+                  </View>
+                )}
               </View>}
 
               <FlatList
                 data={processedTasks}
                 renderItem={renderRow}
                 keyExtractor={(item) => item.id}
-                contentContainerStyle={{ paddingBottom: 80 }}
+                contentContainerStyle={{ paddingBottom: 40 }}
                 ListEmptyComponent={
                   <View style={styles.empty}>
                     <Ionicons name="checkmark-circle-outline" size={44} color={C.text4} style={{ marginBottom: 14 }} />
                     <Text style={styles.emptyText}>항목이 없어요</Text>
-                    <Text style={styles.emptySubText}>오른쪽 아래 + 버튼으로{'\n'}새 항목을 추가해보세요</Text>
+                    <Text style={styles.emptySubText}>오른쪽 위 + 버튼으로{'\n'}새 항목을 추가해보세요</Text>
                   </View>
                 }
               />
             </>
           )}
-          <TouchableOpacity
-            onPress={openAdd}
-            style={[styles.addBtn, { position: 'absolute', bottom: 24, right: 16 }, isLight && { backgroundColor: '#333' }]}
-          >
-            <Ionicons name="add" size={18} color="#fff" />
-          </TouchableOpacity>
         </View>
 
         {/* ── 상세 패널 ── */}
@@ -748,11 +555,6 @@ export default function HomeScreen() {
             onDelete={deleteTask}
             onClose={() => setSelectedTask(null)}
             onOpenSettings={() => setShowTokenModal(true)}
-            links={allLinks[selectedTask.id] ?? []}
-            onLinksChange={(links) => updateTaskLinks(selectedTask.id, links)}
-            subTasks={childrenMap.get(selectedTask.id) ?? []}
-            onAddSubTask={(title) => addSubTask(selectedTask.id, title)}
-            onSelectChild={(child) => setSelectedTask(child)}
           />
         )}
       </View>
@@ -766,38 +568,6 @@ export default function HomeScreen() {
           defaultDueDate={pendingDueDate}
         />
       )}
-
-      {/* ── 체크리스트 팝업 ── */}
-      {checklistPopup && (() => {
-        const popTask = tasks.find((t) => t.id === checklistPopup.taskId);
-        if (!popTask) return null;
-        const popItems = popTask.checklist.map((ci, i) => ({ ...ci, originalIndex: i })).filter((ci) => ci.enabled);
-        const popX = Math.max(8, Math.min(checklistPopup.pageX - 120, (typeof window !== 'undefined' ? window.innerWidth : 400) - 256));
-        const popY = checklistPopup.pageY + 10;
-        return (
-          <Modal transparent animationType="fade" visible onRequestClose={() => setChecklistPopup(null)}>
-            <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setChecklistPopup(null)}>
-              <Pressable
-                style={{ position: 'absolute', top: popY, left: popX, width: 240, backgroundColor: C.bg2, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: 4 }, elevation: 12 }}
-                onPress={() => {}}
-              >
-                <Text style={{ fontSize: 11, color: C.text3, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 6, letterSpacing: -0.1 }} numberOfLines={1}>{popTask.title}</Text>
-                <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: C.border }} />
-                {popItems.map((ci) => (
-                  <TouchableOpacity
-                    key={ci.originalIndex}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.rowBorder }}
-                    onPress={() => toggleCheckItem(checklistPopup.taskId, ci.originalIndex)}
-                  >
-                    <Ionicons name={ci.done ? 'checkmark' : 'ellipse-outline'} size={16} color={C.text4} />
-                    <Text style={{ fontSize: 13, color: ci.done ? C.text4 : C.text2, flex: 1 }}>{ci.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </Pressable>
-            </Pressable>
-          </Modal>
-        );
-      })()}
 
       {/* ── 설정 모달 ── */}
       <SettingsModal
