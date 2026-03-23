@@ -14,6 +14,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+export type TaskLink = {
+  url: string;
+  label?: string;
+};
+
 export type TaskIssue = {
   id: string;
   task_id: string;
@@ -45,6 +50,7 @@ export type Task = {
   due_date: string | null;
   end_date: string | null;
   checklist: ChecklistItem[];
+  parent_id?: string | null;
   created_at: string;
   updated_at: string;
   user_id: string;
