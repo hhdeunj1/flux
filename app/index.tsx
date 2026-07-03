@@ -22,47 +22,17 @@ import { SettingsModal } from '../components/SettingsModal';
 import { ColFilter, DetailPanel } from '../components/DetailPanel';
 import { WorkspaceView } from '../components/WorkspaceView';
 
-// ─── 로그인 ────────────────────────────────────────────────
+// ─── 자동 로그인 ───────────────────────────────────────────
 function LoginScreen() {
-  const [pw, setPw] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const signIn = async () => {
-    setLoading(true);
-    setError('');
-    const { error: e } = await supabase.auth.signInWithPassword({
+  useEffect(() => {
+    supabase.auth.signInWithPassword({
       email: 'hhdeunj1@users.noreply.github.com',
-      password: pw,
+      password: 'flux2024!',
     });
-    if (e) setError('비밀번호가 틀렸어요');
-    setLoading(false);
-  };
+  }, []);
   return (
     <SafeAreaView style={styles.modeContainer}>
-      <View style={styles.modeTitleBlock}>
-        <Text style={styles.modeLogo}>Flux</Text>
-        <Text style={styles.modeTagline}>비밀번호를 입력하세요</Text>
-      </View>
-      <View style={{ gap: 12, alignItems: 'center' }}>
-        <TextInput
-          secureTextEntry
-          value={pw}
-          onChangeText={setPw}
-          placeholder="비밀번호"
-          placeholderTextColor="rgba(235,235,245,0.4)"
-          style={{ backgroundColor: '#2C2C2E', color: '#fff', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 10, fontSize: 16, width: 240 }}
-          onSubmitEditing={signIn}
-        />
-        {error ? <Text style={{ color: '#FF453A', fontSize: 13 }}>{error}</Text> : null}
-        <TouchableOpacity
-          onPress={signIn}
-          style={{ backgroundColor: '#0A84FF', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 12, opacity: loading ? 0.6 : 1 }}
-        >
-          <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
-            {loading ? '로그인 중...' : '로그인'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      <Text style={styles.modeLogo}>Flux</Text>
     </SafeAreaView>
   );
 }
