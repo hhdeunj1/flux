@@ -178,7 +178,7 @@ export default function HomeScreen() {
   useEffect(() => {
     (async () => {
       const m = await AsyncStorage.getItem('flux_mode') as AppMode | null;
-      setMode(m || null);
+      setMode('work2');
       if (m) {
         const tv = await AsyncStorage.getItem(`flux_timeview_${m}`);
         setTimeView((tv as TimeView) || 'all');
@@ -386,7 +386,7 @@ export default function HomeScreen() {
 
   if (authLoading || modeLoading) return null;
   if (!session) return <LoginScreen />;
-  if (!mode) return <ModeSelectScreen onSelect={selectMode} />;
+  if (!mode) return null;
 
   if (mode === 'work2') return (
     <SafeAreaView style={{ flex: 1, backgroundColor: isLight ? '#F2F2F7' : '#161618' }}>
@@ -394,7 +394,7 @@ export default function HomeScreen() {
         isLight={isLight}
         onSwitchMode={switchMode}
         onToggleLight={toggleLight}
-        userId={session.user.id}
+        userId={session.user.user_metadata?.preferred_username ?? session.user.user_metadata?.user_name ?? session.user.id.slice(0, 8)}
       />
     </SafeAreaView>
   );

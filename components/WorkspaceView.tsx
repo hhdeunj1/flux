@@ -1392,7 +1392,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: 
       {/* ── Header ── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, gap: 10 }}>
         <Text style={{ fontSize: 17, fontWeight: '700', color: C.text, letterSpacing: -0.5 }}>Flux</Text>
-        {userId && <Text style={{ fontSize: 12, color: C.text3 }}>@{userId.slice(0, 8)}</Text>}
+        {userId && <Text style={{ fontSize: 12, color: C.text3 }}>@{userId}</Text>}
         <TouchableOpacity
           onPress={onSwitchMode}
           style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: C.bg3, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border2 }}
