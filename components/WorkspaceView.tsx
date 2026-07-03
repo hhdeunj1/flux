@@ -883,8 +883,8 @@ function OutlineRow({
 
         {/* Due date */}
         {dateStr && (
-          <Text style={{ fontSize: 11, color: C.text3, fontVariant: ['tabular-nums'], marginLeft: 8, fontWeight: '400' }}>
-            {m}.{dd}
+          <Text style={{ fontSize: 11, color: isPast ? '#FF453A' : isImminent ? '#FF9F0A' : C.text2, fontVariant: ['tabular-nums'], marginLeft: 8, fontWeight: '500' }}>
+            {m}/{dd}
           </Text>
         )}
 
@@ -1156,7 +1156,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: 
     final.forEach((t) => { if (t.links && t.links.length > 0) initialLinkMap[t.id] = t.links; });
     setLinkMap(initialLinkMap);
     await AsyncStorage.setItem(cacheKey, JSON.stringify(final));
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     fetchTasks();
