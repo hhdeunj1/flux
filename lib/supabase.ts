@@ -37,7 +37,7 @@ export type ChecklistItem = {
 
 export type Task = {
   id: string;
-  mode: 'work' | 'personal';
+  mode: 'work' | 'work2' | 'personal';
   title: string;
   note: string | null;
   milestone: string | null;
@@ -53,6 +53,6 @@ export type Task = {
   parent_id?: string | null;
   created_at: string;
   updated_at: string;
-  user_id: string;
+  user_id: string | null;
   task_issues?: TaskIssue[];
 };

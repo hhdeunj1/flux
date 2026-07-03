@@ -900,24 +900,22 @@ function OutlineRow({
 }
 
 // ─── WorkspaceView ─────────────────────────────────────────
-export function WorkspaceView({ isLight, onSwitchMode, onToggleLight }: {
+export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: {
   isLight: boolean;
   onSwitchMode: () => void;
   onToggleLight: () => void;
+  userId?: string;
 }) {
   const C = isLight ? LIGHT_C : DARK_C;
   const t = todayKST();
 
-  const [userId, setUserId] = useState<string | null>(null); // null=로딩, ''=미설정, string=이름
-  const [nameInput, setNameInput] = useState('');
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
-  // userId 로드 + 접힘 상태 복원
+  // 접힘 상태 복원
   useEffect(() => {
-    AsyncStorage.getItem('work2_user_id').then((id) => setUserId(id ?? 'u1'));
     AsyncStorage.getItem('work2_collapsed').then((v) => { if (v) setCollapsed(new Set(JSON.parse(v))); });
     AsyncStorage.getItem('work2_collapsed_sections').then((v) => { if (v) setCollapsedSections(new Set(JSON.parse(v))); });
   }, []);
@@ -1000,7 +998,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight }: {
       note: null, business: null, priority: null,
       start_date: null, due_date: null, end_date: null,
       checklist: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-      user_id: null, task_issues: [],
+      user_id: userId ?? null, task_issues: [],
     };
     setTasks((prev) => {
       const next = [...prev.map((t) => t.id === childId
@@ -1120,15 +1118,6 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight }: {
     await fetchTasks();
   };
 
-  const handleSetName = async () => {
-    const trimmed = nameInput.trim();
-    if (!trimmed) return;
-    await AsyncStorage.setItem('work2_user_id', trimmed);
-    // 기존 user_id 없는 태스크를 내 것으로 마이그레이션
-    await supabase.from('tasks').update({ user_id: trimmed }).eq('mode', 'work2').is('user_id', null);
-    setUserId(trimmed);
-  };
-
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
     const cacheKey = 'flux_tasks_cache_work2';
@@ -1136,7 +1125,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight }: {
     const cachedTasks: Task[] = cached ? JSON.parse(cached) : [];
     if (cachedTasks.length > 0) setTasks(cachedTasks);
     const [{ data: taskData, error: taskError }, { data: issueData }] = await Promise.all([
-      supabase.from('tasks').select('*').eq('mode', 'work2').order('created_at', { ascending: true }),
+      supabase.from('tasks').select('*').eq('mode', 'work2').eq('user_id', userId ?? null).order('created_at', { ascending: true }),
       supabase.from('task_issues').select('*'),
     ]);
     if (taskError || !taskData) return;
@@ -1278,7 +1267,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight }: {
       checklist: [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
-      user_id: null,
+      user_id: userId ?? null,
       task_issues: [],
     };
 
@@ -1298,7 +1287,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight }: {
       product: addTarget.rawProduct,
       milestone: addTarget.rawMilestone,
       checklist: [],
-      user_id: null,
+      user_id: userId ?? null,
     });
   };
 
@@ -1398,37 +1387,12 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight }: {
     );
   };
 
-  if (userId === null) return null;
-
-  if (!userId) return (
-    <View style={{ flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-      <Text style={{ fontSize: 28, fontWeight: '700', color: C.text, letterSpacing: -1 }}>🗂 Flux</Text>
-      <Text style={{ fontSize: 13, color: C.text3 }}>이름을 입력하면 개인 보드가 생성돼요</Text>
-      <TextInput
-        style={{ width: 200, fontSize: 16, color: C.text, borderBottomWidth: 1, borderBottomColor: C.border2, paddingVertical: 8, textAlign: 'center', outline: 'none' } as any}
-        placeholder="이름 (예: eunj1)"
-        placeholderTextColor={C.text4}
-        value={nameInput}
-        onChangeText={setNameInput}
-        autoFocus
-        returnKeyType="done"
-        onSubmitEditing={handleSetName}
-      />
-      <TouchableOpacity
-        onPress={handleSetName}
-        style={{ paddingHorizontal: 28, paddingVertical: 11, borderRadius: 8, backgroundColor: '#007AFF', opacity: nameInput.trim() ? 1 : 0.35 }}
-      >
-        <Text style={{ fontSize: 14, fontWeight: '600', color: '#fff' }}>시작하기</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       {/* ── Header ── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, gap: 10 }}>
         <Text style={{ fontSize: 17, fontWeight: '700', color: C.text, letterSpacing: -0.5 }}>Flux</Text>
-        <Text style={{ fontSize: 12, color: C.text3 }}>@{userId}</Text>
+        {userId && <Text style={{ fontSize: 12, color: C.text3 }}>@{userId.slice(0, 8)}</Text>}
         <TouchableOpacity
           onPress={onSwitchMode}
           style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: C.bg3, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border2 }}
@@ -1749,7 +1713,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight }: {
             note: null, business: null, priority: null,
             start_date: null, due_date: null, end_date: null,
             checklist: [], created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(), user_id: null, task_issues: [],
+            updated_at: new Date().toISOString(), user_id: userId ?? null, task_issues: [],
           };
           setTasks((prev) => {
             const next = [...prev, newTask];
@@ -1758,7 +1722,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight }: {
           });
           supabase.from('tasks').insert({
             id: newTask.id, title, status: 'todo', type: 'task', mode: 'work2',
-            product, milestone, checklist: [], user_id: null,
+            product, milestone, checklist: [], user_id: userId ?? null,
           });
         }}
         C={C}

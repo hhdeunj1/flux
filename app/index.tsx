@@ -5,6 +5,7 @@ import {
   KeyboardAvoidingView, Platform, Alert, Linking, useWindowDimensions,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Session } from '@supabase/supabase-js';
 import { supabase, Task, TaskType, TaskLink } from '../lib/supabase';
 import { fetchAllRepos, getToken, saveToken, issueUrl, PINNED_REPOS } from '../lib/github';
 import { getClaudeKey, saveClaudeKey, getProxyHost, saveProxyHost } from '../lib/claude';
@@ -20,6 +21,35 @@ import { MonthCalendar, WeekView, DayView } from '../components/CalendarViews';
 import { SettingsModal } from '../components/SettingsModal';
 import { ColFilter, DetailPanel } from '../components/DetailPanel';
 import { WorkspaceView } from '../components/WorkspaceView';
+
+// ─── 로그인 ────────────────────────────────────────────────
+function LoginScreen() {
+  const [loading, setLoading] = useState(false);
+  const signIn = async () => {
+    setLoading(true);
+    const redirectTo = typeof window !== 'undefined'
+      ? window.location.origin + window.location.pathname
+      : 'https://hhdeunj1.github.io/flux/';
+    await supabase.auth.signInWithOAuth({ provider: 'github', options: { redirectTo } });
+    setLoading(false);
+  };
+  return (
+    <SafeAreaView style={styles.modeContainer}>
+      <View style={styles.modeTitleBlock}>
+        <Text style={styles.modeLogo}>Flux</Text>
+        <Text style={styles.modeTagline}>GitHub 계정으로 시작하세요</Text>
+      </View>
+      <TouchableOpacity
+        onPress={signIn}
+        style={{ backgroundColor: '#238636', paddingHorizontal: 32, paddingVertical: 14, borderRadius: 12, opacity: loading ? 0.6 : 1 }}
+      >
+        <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>
+          {loading ? '이동 중...' : '🐙 GitHub으로 로그인'}
+        </Text>
+      </TouchableOpacity>
+    </SafeAreaView>
+  );
+}
 
 // ─── 모드 선택 ─────────────────────────────────────────────
 function ModeSelectScreen({ onSelect }: { onSelect: (mode: AppMode) => void }) {
@@ -102,6 +132,18 @@ function AddModal({ onQuickAdd, onDetailAdd, onClose, defaultDueDate }: {
 
 // ─── 메인 ─────────────────────────────────────────────────
 export default function HomeScreen() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session: s } }) => {
+      setSession(s);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
+    return () => subscription.unsubscribe();
+  }, []);
+
   const [mode, setMode] = useState<AppMode | null>(null);
   const [modeLoading, setModeLoading] = useState(true);
   const [timeView, setTimeView] = useState<TimeView>('all');
@@ -340,7 +382,8 @@ export default function HomeScreen() {
     fetchAllRepos().then(setRepos);
   };
 
-  if (modeLoading) return null;
+  if (authLoading || modeLoading) return null;
+  if (!session) return <LoginScreen />;
   if (!mode) return <ModeSelectScreen onSelect={selectMode} />;
 
   if (mode === 'work2') return (
@@ -349,6 +392,7 @@ export default function HomeScreen() {
         isLight={isLight}
         onSwitchMode={switchMode}
         onToggleLight={toggleLight}
+        userId={session.user.id}
       />
     </SafeAreaView>
   );
