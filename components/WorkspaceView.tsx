@@ -916,11 +916,12 @@ function OutlineRow({
 }
 
 // ─── WorkspaceView ─────────────────────────────────────────
-export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: {
+export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, username }: {
   isLight: boolean;
   onSwitchMode: () => void;
   onToggleLight: () => void;
   userId?: string;
+  username?: string;
 }) {
   const C = isLight ? LIGHT_C : DARK_C;
   const t = todayKST();
@@ -1139,7 +1140,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: 
     const cachedTasks: Task[] = cached ? JSON.parse(cached) : [];
     if (cachedTasks.length > 0) setTasks(cachedTasks);
     const [{ data: taskData, error: taskError }, { data: issueData }] = await Promise.all([
-      supabase.from('tasks').select('*').in('mode', ['work', 'work2']).eq('user_id', userId ?? null).order('created_at', { ascending: true }),
+      supabase.from('tasks').select('*').eq('mode', 'work2').eq('user_id', userId ?? null).order('created_at', { ascending: true }),
       supabase.from('task_issues').select('*'),
     ]);
     if (taskError || !taskData) return;
@@ -1409,7 +1410,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: 
       {/* ── Header ── */}
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, gap: 10 }}>
         <Text style={{ fontSize: 17, fontWeight: '700', color: C.text, letterSpacing: -0.5 }}>Flux</Text>
-        {userId && <Text style={{ fontSize: 12, color: C.text3 }}>@{userId}</Text>}
+        {(username || userId) && <Text style={{ fontSize: 12, color: C.text3 }}>@{username ?? userId?.slice(0, 8)}</Text>}
 
         <View style={{ flex: 1 }} />
         <TouchableOpacity

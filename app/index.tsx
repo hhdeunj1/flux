@@ -395,6 +395,7 @@ export default function HomeScreen() {
         onSwitchMode={switchMode}
         onToggleLight={toggleLight}
         userId={session.user.id}
+        username={session.user.user_metadata?.preferred_username ?? session.user.user_metadata?.user_name}
       />
     </SafeAreaView>
   );
