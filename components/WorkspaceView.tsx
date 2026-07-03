@@ -454,17 +454,17 @@ function linkMeta(url: string) {
   return { iconName: 'link-outline' as const, figma: false, color: '#8E8E93', bg: 'rgba(142,142,147,0.15)' };
 }
 
-function LinkBadge({ link, C }: { link: TaskLink; C: ThemeColors; onRemove: () => void }) {
+function LinkBadge({ link }: { link: TaskLink; C: ThemeColors; onRemove: () => void }) {
   const meta = linkMeta(link.url);
   return (
-    <View style={{ marginLeft: 4, flexDirection: 'row', alignItems: 'center', backgroundColor: C.chipBg, borderRadius: 3, paddingHorizontal: 4, paddingVertical: 2, borderWidth: 1, borderColor: C.chipBorder }}>
-      <TouchableOpacity onPress={() => Linking.openURL(link.url)}>
+    <TouchableOpacity onPress={() => Linking.openURL(link.url)}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: meta.bg, borderRadius: 4, paddingHorizontal: 5, paddingVertical: 3, borderWidth: 1, borderColor: meta.color + '55', marginLeft: 3 }}>
         {meta.figma
-          ? <FontAwesome5 name="figma" size={11} color={C.text3} />
-          : <Ionicons name={meta.iconName!} size={11} color={C.text3} />
+          ? <FontAwesome5 name="figma" size={11} color={meta.color} />
+          : <Ionicons name={meta.iconName!} size={11} color={meta.color} />
         }
-      </TouchableOpacity>
-    </View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -752,7 +752,9 @@ function OutlineRow({
   const isImminent = !!(dateStr && !isDone && !isPast && dateStr <= addWorkingDays(t, 2));
   const indent = 12 + depth * 12;
   const isGroup = depth === 0;
+  const { text: noteText, links: noteLinks } = parseNoteLinks(task.note);
   const hasNote = !!(task.note && task.note.trim());
+  const allLinks = [...noteLinks, ...links];
 
   // ── depth별 스타일 ──────────────────────────────────────────
   const rowPadV    = depth === 0 ? 9 : depth === 1 ? 6 : 5;
@@ -847,23 +849,13 @@ function OutlineRow({
                   value={noteValue} onChangeText={onChangeNote} onBlur={onCommitNote}
                   autoFocus placeholder="메모..." placeholderTextColor={C.text4}
                 />
-              ) : hasNote ? (() => {
-                const { text: noteText, links: noteLinks } = parseNoteLinks(task.note);
-                return (
-                  <>
-                    {noteText ? (
-                      <TouchableOpacity onPress={onStartEditNote} style={{ flexShrink: 1 }} activeOpacity={0.6}>
-                        <Text style={{ fontSize: 11, color: C.text3, fontStyle: 'italic', lineHeight: 15 }} numberOfLines={1}>
-                          {noteText}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    {noteLinks.map((nl, ni) => (
-                      <LinkBadge key={`nl-${ni}`} link={nl} C={C} onRemove={() => {}} />
-                    ))}
-                  </>
-                );
-              })() : rowHovered ? (
+              ) : hasNote && noteText ? (
+                <TouchableOpacity onPress={onStartEditNote} style={{ flexShrink: 1 }} activeOpacity={0.6}>
+                  <Text style={{ fontSize: 11, color: C.text3, fontStyle: 'italic', lineHeight: 15 }} numberOfLines={1}>
+                    {noteText}
+                  </Text>
+                </TouchableOpacity>
+              ) : rowHovered ? (
                 <TouchableOpacity onPress={onStartEditNote} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                   <Ionicons name="create-outline" size={12} color={C.text4} />
                 </TouchableOpacity>
@@ -874,11 +866,11 @@ function OutlineRow({
 
 
         {/* Link badges — 날짜 앞 */}
-        {links.map((link, i) => React.createElement(LinkBadge, {
+        {allLinks.map((link, i) => React.createElement(LinkBadge, {
           key: i,
           link,
           C,
-          onRemove: () => onRemoveLink(i),
+          onRemove: () => { if (i >= noteLinks.length) onRemoveLink(i - noteLinks.length); },
         }))}
 
         {/* Issue badges */}
