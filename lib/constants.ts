@@ -1,7 +1,7 @@
 import { Task, TaskType, ChecklistItem } from './supabase';
 
 // ─── 타입 ──────────────────────────────────────────────────
-export type AppMode    = 'work' | 'personal';
+export type AppMode    = 'work' | 'work2' | 'personal';
 export type TimeView   = 'all' | 'monthly' | 'weekly' | 'daily';
 export type SortKey    = 'product' | 'milestone' | 'type' | 'title' | 'status' | 'business' | null;
 export type SortDir    = 'asc' | 'desc';

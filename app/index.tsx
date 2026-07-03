@@ -19,6 +19,7 @@ import { styles } from '../lib/styles';
 import { MonthCalendar, WeekView, DayView } from '../components/CalendarViews';
 import { SettingsModal } from '../components/SettingsModal';
 import { ColFilter, DetailPanel } from '../components/DetailPanel';
+import { WorkspaceView } from '../components/WorkspaceView';
 
 // ─── 모드 선택 ─────────────────────────────────────────────
 function ModeSelectScreen({ onSelect }: { onSelect: (mode: AppMode) => void }) {
@@ -33,6 +34,11 @@ function ModeSelectScreen({ onSelect }: { onSelect: (mode: AppMode) => void }) {
           <Text style={styles.modeCardEmoji}>💼</Text>
           <Text style={styles.modeCardLabel}>업무</Text>
           <Text style={styles.modeCardDesc}>GitHub 이슈 연동{'\n'}프로젝트 관리</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.modeCard} onPress={() => onSelect('work2')}>
+          <Text style={styles.modeCardEmoji}>📊</Text>
+          <Text style={styles.modeCardLabel}>업무(board)</Text>
+          <Text style={styles.modeCardDesc}>보드 뷰{'\n'}마일스톤 관리</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.modeCard} onPress={() => onSelect('personal')}>
           <Text style={styles.modeCardEmoji}>🌱</Text>
@@ -336,6 +342,16 @@ export default function HomeScreen() {
 
   if (modeLoading) return null;
   if (!mode) return <ModeSelectScreen onSelect={selectMode} />;
+
+  if (mode === 'work2') return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: isLight ? '#F2F2F7' : '#161618' }}>
+      <WorkspaceView
+        isLight={isLight}
+        onSwitchMode={switchMode}
+        onToggleLight={toggleLight}
+      />
+    </SafeAreaView>
+  );
 
   const hasFilters = Object.values(filters).some(Boolean) || !!searchText;
 
