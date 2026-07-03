@@ -1125,7 +1125,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: 
     const cachedTasks: Task[] = cached ? JSON.parse(cached) : [];
     if (cachedTasks.length > 0) setTasks(cachedTasks);
     const [{ data: taskData, error: taskError }, { data: issueData }] = await Promise.all([
-      supabase.from('tasks').select('*').eq('mode', 'work2').eq('user_id', userId ?? null).order('created_at', { ascending: true }),
+      supabase.from('tasks').select('*').in('mode', ['work', 'work2']).eq('user_id', userId ?? null).order('created_at', { ascending: true }),
       supabase.from('task_issues').select('*'),
     ]);
     if (taskError || !taskData) return;
