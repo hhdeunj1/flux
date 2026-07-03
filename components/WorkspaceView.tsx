@@ -49,10 +49,7 @@ function deriveSections(tasks: Task[]): Section[] {
   const rootTasks = tasks.filter((t) => !t.parent_id);
   const seen = new Set<string>();
   const sections: Section[] = [];
-  const milestoneOrder = (m: string | null) => {
-    const idx = MILESTONES.indexOf(m ?? 'ETC');
-    return idx === -1 ? 99 : idx;
-  };
+  const milestoneOrder = (m: string | null) => msOrder(m ?? 'ETC');
   [...rootTasks]
     .sort((a, b) => {
       const mo = milestoneOrder(a.milestone) - milestoneOrder(b.milestone);
@@ -74,6 +71,14 @@ function deriveSections(tasks: Task[]): Section[] {
   return sections;
 }
 
+function msOrder(ms: string): number {
+  if (ms === 'ETC' || ms === '기타') return 99999;
+  if (ms === 'TBD') return 99998;
+  const m = ms.match(/v?(\d+)\.(\d+)/);
+  if (m) return parseInt(m[1]) * 1000 + parseInt(m[2]);
+  return 99997;
+}
+
 function deriveColumns(sections: Section[]): Column[] {
   const map = new Map<string, Column>();
   sections.forEach((s) => {
@@ -82,9 +87,10 @@ function deriveColumns(sections: Section[]): Column[] {
     }
     map.get(s.milestone)!.sections.push(s);
   });
-  const result: Column[] = [];
-  MILESTONES.filter(ms => ms !== 'ETC').forEach((ms) => { if (map.has(ms)) result.push(map.get(ms)!); });
-  map.forEach((col, ms) => { if (!MILESTONES.includes(ms)) result.push(col); });
+  const result: Column[] = [...map.entries()]
+    .filter(([ms]) => ms !== 'ETC')
+    .sort(([a], [b]) => msOrder(a) - msOrder(b))
+    .map(([, col]) => col);
   // 기타(ETC) 항상 마지막에
   const etcSections = sections.filter(s => s.milestone === 'ETC');
   result.push({ milestone: '기타', rawMilestone: null, sections: etcSections });
@@ -428,6 +434,14 @@ function IssueBadge({ issue, C, onRemove }: { issue: any; C: ThemeColors; onRemo
 }
 
 // ─── LinkBadge ─────────────────────────────────────────────
+const URL_RE = /https?:\/\/[^\s]+/g;
+function parseNoteLinks(note: string | null): { text: string; links: TaskLink[] } {
+  if (!note) return { text: '', links: [] };
+  const links: TaskLink[] = [];
+  const text = note.replace(URL_RE, (u) => { links.push({ url: u }); return ''; }).replace(/\s+/g, ' ').trim();
+  return { text, links };
+}
+
 function linkMeta(url: string) {
   if (url.includes('github.com'))
     return { iconName: 'logo-github' as const, figma: false, color: '#aab4c0', bg: 'rgba(139,148,158,0.22)' };
@@ -833,13 +847,23 @@ function OutlineRow({
                   value={noteValue} onChangeText={onChangeNote} onBlur={onCommitNote}
                   autoFocus placeholder="메모..." placeholderTextColor={C.text4}
                 />
-              ) : hasNote ? (
-                <TouchableOpacity onPress={onStartEditNote} style={{ flexShrink: 1 }} activeOpacity={0.6}>
-                  <Text style={{ fontSize: 11, color: C.text3, fontStyle: 'italic', lineHeight: 15 }} numberOfLines={1}>
-                    {task.note}
-                  </Text>
-                </TouchableOpacity>
-              ) : rowHovered ? (
+              ) : hasNote ? (() => {
+                const { text: noteText, links: noteLinks } = parseNoteLinks(task.note);
+                return (
+                  <>
+                    {noteText ? (
+                      <TouchableOpacity onPress={onStartEditNote} style={{ flexShrink: 1 }} activeOpacity={0.6}>
+                        <Text style={{ fontSize: 11, color: C.text3, fontStyle: 'italic', lineHeight: 15 }} numberOfLines={1}>
+                          {noteText}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {noteLinks.map((nl, ni) => (
+                      <LinkBadge key={`nl-${ni}`} link={nl} C={C} onRemove={() => {}} />
+                    ))}
+                  </>
+                );
+              })() : rowHovered ? (
                 <TouchableOpacity onPress={onStartEditNote} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                   <Ionicons name="create-outline" size={12} color={C.text4} />
                 </TouchableOpacity>
@@ -972,9 +996,6 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: 
     AsyncStorage.getItem('work2_assignees').then((v) => {
       if (v) setAssignees(JSON.parse(v));
     });
-    AsyncStorage.getItem('work2_links').then((v) => {
-      if (v) setLinkMap(JSON.parse(v));
-    });
     AsyncStorage.getItem('work2_section_orders').then((v) => {
       if (v) setSectionOrders(JSON.parse(v));
     });
@@ -1039,8 +1060,9 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: 
 
   const commitLink = (taskId: string, link: TaskLink) => {
     setLinkMap((prev) => {
-      const next = { ...prev, [taskId]: [...(prev[taskId] ?? []), link] };
-      AsyncStorage.setItem('work2_links', JSON.stringify(next));
+      const newLinks = [...(prev[taskId] ?? []), link];
+      const next = { ...prev, [taskId]: newLinks };
+      supabase.from('tasks').update({ links: newLinks }).eq('id', taskId).then(() => {});
       return next;
     });
   };
@@ -1138,6 +1160,9 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: 
     const localOnly = cachedTasks.filter((t) => !supabaseById.has(t.id));
     const final = [...merged, ...localOnly];
     setTasks(final);
+    const initialLinkMap: Record<string, TaskLink[]> = {};
+    final.forEach((t) => { if (t.links && t.links.length > 0) initialLinkMap[t.id] = t.links; });
+    setLinkMap(initialLinkMap);
     await AsyncStorage.setItem(cacheKey, JSON.stringify(final));
   }, []);
 
@@ -1361,7 +1386,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: 
             setLinkMap((prev) => {
               const links = (prev[task.id] ?? []).filter((_, i) => i !== idx);
               const next = { ...prev, [task.id]: links };
-              AsyncStorage.setItem('work2_links', JSON.stringify(next));
+              supabase.from('tasks').update({ links }).eq('id', task.id).then(() => {});
               return next;
             });
           }}
@@ -1393,12 +1418,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: 
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, gap: 10 }}>
         <Text style={{ fontSize: 17, fontWeight: '700', color: C.text, letterSpacing: -0.5 }}>Flux</Text>
         {userId && <Text style={{ fontSize: 12, color: C.text3 }}>@{userId}</Text>}
-        <TouchableOpacity
-          onPress={onSwitchMode}
-          style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: C.bg3, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border2 }}
-        >
-          <Text style={{ fontSize: 11, color: C.text3 }}>🗂 업무(New)</Text>
-        </TouchableOpacity>
+
         <View style={{ flex: 1 }} />
         <TouchableOpacity
           onPress={() => {
@@ -1471,23 +1491,6 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: 
 
             {showFilterPanel && (
               <ScrollView contentContainerStyle={{ paddingVertical: 6, paddingHorizontal: 8 }} showsVerticalScrollIndicator={false}>
-                {/* 플래그 필터 */}
-                {(['today', 'tomorrow'] as const).map((f) => {
-                  const label = f === 'today' ? '오늘' : '내일';
-                  const color = f === 'today' ? '#FF453A' : '#FFD60A';
-                  const active = flagFilter === f;
-                  return (
-                    <TouchableOpacity
-                      key={f}
-                      onPress={() => setFlagFilter(active ? null : f)}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 }}
-                    >
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color, opacity: active ? 1 : 0.35 }} />
-                      <Text style={{ fontSize: 12, color: active ? color : C.text3, fontWeight: active ? '600' : '400' }}>{label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-                <View style={{ height: 1, backgroundColor: C.border, marginVertical: 6 }} />
                 {/* 마일스톤 필터 */}
                 {columns.map((col) => {
                   const isVisible = !hiddenMilestones.has(col.milestone);

@@ -62,4 +62,5 @@ export type Task = {
   updated_at: string;
   user_id: string | null;
   task_issues?: TaskIssue[];
+  links?: TaskLink[] | null;
 };
