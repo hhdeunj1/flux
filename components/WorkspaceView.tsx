@@ -1083,7 +1083,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: 
     const ins = async (title: string, status: string, pid: string | null, ms: string, due: string | null) => {
       const { data, error } = await supabase.from('tasks').insert({
         title, status, type: 'task', mode: 'work2', product: '라이더앱',
-        milestone: ms, parent_id: pid, due_date: due, checklist: [],
+        milestone: ms, parent_id: pid, due_date: due, checklist: [], user_id: userId,
       }).select('id').single();
       if (error) { alert('insert error: ' + error.message + ' | ' + JSON.stringify(error)); throw error; }
       return data?.id ?? null;
