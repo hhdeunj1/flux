@@ -1427,6 +1427,9 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId }: 
         <TouchableOpacity onPress={onToggleLight} style={{ padding: 4 }}>
           <Ionicons name={isLight ? 'moon-outline' : 'sunny-outline'} size={16} color={C.text3} />
         </TouchableOpacity>
+        <TouchableOpacity onPress={() => supabase.auth.signOut()} style={{ padding: 4 }}>
+          <Ionicons name="log-out-outline" size={16} color={C.text3} />
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={() => { setAddSectionMilestone(null); setShowAddSection(true); }}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 7, backgroundColor: '#007AFF' }}
