@@ -22,17 +22,33 @@ import { SettingsModal } from '../components/SettingsModal';
 import { ColFilter, DetailPanel } from '../components/DetailPanel';
 import { WorkspaceView } from '../components/WorkspaceView';
 
-// ─── 자동 로그인 ───────────────────────────────────────────
+// ─── GitHub 로그인 ─────────────────────────────────────────
 function LoginScreen() {
-  useEffect(() => {
-    supabase.auth.signInWithPassword({
-      email: 'hhdeunj1@users.noreply.github.com',
-      password: 'flux2024!',
+  const [loading, setLoading] = useState(false);
+  const handleLogin = async () => {
+    setLoading(true);
+    await supabase.auth.signInWithOAuth({
+      provider: 'github',
+      options: { redirectTo: 'https://hhdeunj1.github.io/flux/' },
     });
-  }, []);
+    setLoading(false);
+  };
   return (
-    <SafeAreaView style={styles.modeContainer}>
-      <Text style={styles.modeLogo}>Flux</Text>
+    <SafeAreaView style={[styles.modeContainer, { gap: 32 }]}>
+      <View style={styles.modeTitleBlock}>
+        <Text style={styles.modeLogo}>Flux</Text>
+        <Text style={styles.modeTagline}>기획자의 워크스페이스</Text>
+      </View>
+      <TouchableOpacity
+        onPress={handleLogin}
+        disabled={loading}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#24292e', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12 }}
+      >
+        <Ionicons name="logo-github" size={20} color="#fff" />
+        <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>
+          {loading ? '연결 중...' : 'GitHub로 로그인'}
+        </Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -246,9 +262,9 @@ export default function HomeScreen() {
   const [proxyHostInput, setProxyHostInput] = useState('');
 
   const fetchTasks = useCallback(async () => {
-    if (!mode) return;
+    if (!mode || !session) return;
     const [{ data: taskData }, { data: issueData }] = await Promise.all([
-      supabase.from('tasks').select('*').eq('mode', mode).order('created_at', { ascending: false }),
+      supabase.from('tasks').select('*').eq('mode', mode).eq('user_id', session.user.id).order('created_at', { ascending: false }),
       supabase.from('task_issues').select('*'),
     ]);
     const merged = (taskData ?? []).map((t) => ({
@@ -256,7 +272,7 @@ export default function HomeScreen() {
       task_issues: (issueData ?? []).filter((i) => i.task_id === t.id),
     }));
     setTasks(merged);
-  }, [mode]);
+  }, [mode, session]);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
   useEffect(() => { fetchAllRepos().then(setRepos); getToken().then((t) => { if (t) setTokenInput(t); }); getClaudeKey().then((k) => { if (k) setClaudeKeyInput(k); }); getProxyHost().then((h) => { if (h) setProxyHostInput(h); }); }, []);
@@ -301,7 +317,7 @@ export default function HomeScreen() {
   processedTasks.forEach((t) => { rowNums.set(t.id, ++_n); });
 
   const quickAdd = async (title: string, type: TaskType, dueDate?: string) => {
-    const payload: any = { title, status: 'todo', type, mode };
+    const payload: any = { title, status: 'todo', type, mode, user_id: session.user.id };
     if (dueDate) payload.due_date = dueDate;
     const { data, error } = await supabase.from('tasks').insert(payload).select('*').single();
     if (error) { Alert.alert('생성 오류', error.message); return; }
@@ -309,7 +325,7 @@ export default function HomeScreen() {
     if (data) setSelectedTask({ ...data, task_issues: [] });
   };
   const detailAdd = async (title: string, type: TaskType, dueDate?: string) => {
-    const payload: any = { title, status: 'todo', type, mode };
+    const payload: any = { title, status: 'todo', type, mode, user_id: session.user.id };
     if (dueDate) payload.due_date = dueDate;
     const { data, error } = await supabase.from('tasks').insert(payload).select('*').single();
     if (error) { Alert.alert('생성 오류', error.message); return; }
@@ -338,7 +354,7 @@ export default function HomeScreen() {
     }
   };
   const addSubTask = async (parentId: string, title: string) => {
-    const { error } = await supabase.from('tasks').insert({ title, status: 'todo', type: 'task', mode, parent_id: parentId });
+    const { error } = await supabase.from('tasks').insert({ title, status: 'todo', type: 'task', mode, parent_id: parentId, user_id: session.user.id });
     if (!error) {
       await fetchTasks();
       setExpandedParents((prev) => new Set([...prev, parentId]));
@@ -652,7 +668,7 @@ export default function HomeScreen() {
             <View style={styles.headerTitleRow}>
               <View style={styles.headerLeft}>
                 <Text style={[styles.headerTitle, { color: C.text }]}>Flux</Text>
-                <Text style={[styles.headerUser, { color: C.text3 }]}>@eunj1</Text>
+                <Text style={[styles.headerUser, { color: C.text3 }]}>@{session.user.user_metadata?.preferred_username ?? session.user.user_metadata?.user_name ?? session.user.email?.split('@')[0]}</Text>
                 <TouchableOpacity onPress={switchMode} style={[styles.modePill, { backgroundColor: C.bg3, borderColor: C.border2 }]}>
                   <Text style={[styles.modePillText, { color: C.text3 }]}>{mode === 'work' ? '💼 업무' : '🌱 개인'}</Text>
                 </TouchableOpacity>
@@ -686,6 +702,9 @@ export default function HomeScreen() {
                 </View>
                 <TouchableOpacity onPress={() => setShowTokenModal(true)} style={styles.iconBtn}>
                   <Ionicons name="settings-outline" size={17} color={C.text3} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => supabase.auth.signOut()} style={styles.iconBtn}>
+                  <Ionicons name="log-out-outline" size={17} color={C.text3} />
                 </TouchableOpacity>
               </View>
             </View>
