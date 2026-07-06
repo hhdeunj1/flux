@@ -1000,7 +1000,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       const next = prev.map((t) => t.id === childId
         ? { ...t, parent_id: newParentId, milestone: parent?.milestone ?? newMilestone, product: parent?.product ?? t.product }
         : t);
-      AsyncStorage.setItem('flux_tasks_cache_work2', JSON.stringify(next));
+      AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
       return next;
     });
   }, [tasks]);
@@ -1018,7 +1018,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       const next = [...prev.map((t) => t.id === childId
         ? { ...t, parent_id: newParent.id, milestone: newMilestone, product }
         : t), newParent];
-      AsyncStorage.setItem('flux_tasks_cache_work2', JSON.stringify(next));
+      AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
       return next;
     });
   }, []);
@@ -1069,7 +1069,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
   const updateLocalTask = useCallback((taskId: string, updates: Partial<Task>) => {
     setTasks((prev) => {
       const next = prev.map((tk) => tk.id === taskId ? { ...tk, ...updates, updated_at: new Date().toISOString() } : tk);
-      AsyncStorage.setItem('flux_tasks_cache_work2', JSON.stringify(next));
+      AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
       return next;
     });
     supabase.from('tasks').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', taskId);
@@ -1135,7 +1135,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
 
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
-    const cacheKey = 'flux_tasks_cache_work2';
+    const cacheKey = 'flux_tasks_cache_work2_v2';
     const cached = await AsyncStorage.getItem(cacheKey);
     const cachedTasks: Task[] = cached ? JSON.parse(cached) : [];
     if (cachedTasks.length > 0) setTasks(cachedTasks);
@@ -1251,7 +1251,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       const next = prev.map((tk) => tk.id === taskId
         ? { ...tk, task_issues: [...(tk.task_issues ?? []), newIssue] }
         : tk);
-      AsyncStorage.setItem('flux_tasks_cache_work2', JSON.stringify(next));
+      AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
       return next;
     });
   };
@@ -1295,7 +1295,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     // 로컬 즉시 반영
     setTasks((prev) => {
       const next = [...prev, newTask];
-      AsyncStorage.setItem('flux_tasks_cache_work2', JSON.stringify(next));
+      AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
       return next;
     });
     setAddTarget(null);
@@ -1321,7 +1321,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     // 로컬 즉시 반영
     setTasks((prev) => {
       const next = prev.filter((tk) => tk.id !== id && tk.parent_id !== id);
-      AsyncStorage.setItem('flux_tasks_cache_work2', JSON.stringify(next));
+      AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
       return next;
     });
     // 백그라운드 Supabase 동기화
@@ -1375,7 +1375,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
               const next = prev.map((tk) => tk.id === task.id
                 ? { ...tk, task_issues: (tk.task_issues ?? []).filter((i) => i.id !== issueId) }
                 : tk);
-              AsyncStorage.setItem('flux_tasks_cache_work2', JSON.stringify(next));
+              AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
               return next;
             });
           }}
@@ -1720,7 +1720,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
           };
           setTasks((prev) => {
             const next = [...prev, newTask];
-            AsyncStorage.setItem('flux_tasks_cache_work2', JSON.stringify(next));
+            AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
             return next;
           });
           supabase.from('tasks').insert({
