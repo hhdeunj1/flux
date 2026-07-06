@@ -1139,16 +1139,18 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     const cached = await AsyncStorage.getItem(cacheKey);
     const cachedTasks: Task[] = cached ? JSON.parse(cached) : [];
     if (cachedTasks.length > 0) setTasks(cachedTasks);
-    const [{ data: taskData, error: taskError }, { data: issueData }] = await Promise.all([
-      supabase.from('tasks').select('*').eq('mode', 'work2').eq('user_id', userId ?? null).order('created_at', { ascending: true }),
-      supabase.from('task_issues').select('*'),
-    ]);
+    const { data: taskData, error: taskError } = await supabase
+      .from('tasks')
+      .select('*, task_issues(*)')
+      .eq('mode', 'work2')
+      .eq('user_id', userId ?? null)
+      .order('created_at', { ascending: true });
     if (taskError || !taskData) return;
     if (taskData.length === 0 && cachedTasks.length > 0) return;
     const supabaseById = new Map(taskData.map((t) => [t.id, t]));
     const merged = taskData.map((task) => ({
       ...task,
-      task_issues: (issueData ?? []).filter((i) => i.task_id === task.id),
+      task_issues: (task as any).task_issues ?? [],
     }));
     const localOnly = cachedTasks.filter((t) => !supabaseById.has(t.id));
     const final = [...merged, ...localOnly];
@@ -1242,8 +1244,9 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
   };
 
   // Link issue
-  const commitIssue = (taskId: string, repo: string, num: number) => {
+  const commitIssue = async (taskId: string, repo: string, num: number) => {
     const newIssue = { id: uid(), task_id: taskId, github_repo: repo, github_issue_number: num, created_at: new Date().toISOString() };
+    await supabase.from('task_issues').insert({ task_id: taskId, github_repo: repo, github_issue_number: num });
     setTasks((prev) => {
       const next = prev.map((tk) => tk.id === taskId
         ? { ...tk, task_issues: [...(tk.task_issues ?? []), newIssue] }
@@ -1367,6 +1370,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
           taskSectionKey={depth <= 1 ? sectionKey : undefined}
           links={linkMap[task.id] ?? []}
           onRemoveIssue={(issueId) => {
+            supabase.from('task_issues').delete().eq('id', issueId).then(() => {});
             setTasks((prev) => {
               const next = prev.map((tk) => tk.id === task.id
                 ? { ...tk, task_issues: (tk.task_issues ?? []).filter((i) => i.id !== issueId) }
