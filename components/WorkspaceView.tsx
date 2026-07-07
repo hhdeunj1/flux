@@ -1081,7 +1081,17 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
       return next;
     });
-    supabase.from('tasks').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', taskId);
+    const persist = async (retries = 3) => {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', taskId);
+      if (error && retries > 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+        return persist(retries - 1);
+      }
+    };
+    persist();
   }, []);
 
   const handleDrop = useCallback((taskId: string, newMilestone: string | null) => {
@@ -1183,11 +1193,14 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       );
     }
 
+    const cachedById = new Map(cachedTasks.map((t) => [t.id, t]));
     const supabaseById = new Map(taskData.map((t) => [t.id, t]));
-    const merged = taskData.map((task) => ({
-      ...task,
-      task_issues: issuesByTaskId[task.id] ?? [],
-    }));
+    const merged = taskData.map((task) => {
+      const cached = cachedById.get(task.id);
+      // 캐시가 더 최신이면 캐시 우선 (Supabase 저장 실패한 로컬 편집 보존)
+      const base = (cached && cached.updated_at > task.updated_at) ? cached : task;
+      return { ...base, task_issues: issuesByTaskId[task.id] ?? [] };
+    });
     const localOnly = cachedTasks.filter((t) => !supabaseById.has(t.id));
     const final = [...merged, ...localOnly];
     setTasks(final);
