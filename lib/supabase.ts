@@ -42,6 +42,21 @@ export type ChecklistItem = {
   done: boolean;     // 완료 여부
 };
 
+export type BoardType = 'task' | 'issue';
+
+export type TaskBoardConfig = { mode: string };
+export type IssueBoardConfig = { products: string[]; milestones: string[] };
+
+export type Board = {
+  id: string;
+  user_id: string;
+  name: string;
+  type: BoardType;
+  config: TaskBoardConfig | IssueBoardConfig;
+  position: number;
+  created_at: string;
+};
+
 export type Task = {
   id: string;
   mode: 'work' | 'work2' | 'personal';

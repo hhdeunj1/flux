@@ -917,12 +917,14 @@ function OutlineRow({
 }
 
 // ─── WorkspaceView ─────────────────────────────────────────
-export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, username }: {
+export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, username, mode = 'work2', hideModeSwitch = false }: {
   isLight: boolean;
   onSwitchMode: () => void;
   onToggleLight: () => void;
   userId?: string;
   username?: string;
+  mode?: string;
+  hideModeSwitch?: boolean;
 }) {
   const C = isLight ? LIGHT_C : DARK_C;
   const t = todayKST();
@@ -934,8 +936,8 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
 
   // 접힘 상태 복원
   useEffect(() => {
-    AsyncStorage.getItem('work2_collapsed').then((v) => { if (v) setCollapsed(new Set(JSON.parse(v))); });
-    AsyncStorage.getItem('work2_collapsed_sections').then((v) => { if (v) setCollapsedSections(new Set(JSON.parse(v))); });
+    AsyncStorage.getItem(`${mode}_collapsed`).then((v) => { if (v) setCollapsed(new Set(JSON.parse(v))); });
+    AsyncStorage.getItem(`${mode}_collapsed_sections`).then((v) => { if (v) setCollapsedSections(new Set(JSON.parse(v))); });
   }, []);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -988,10 +990,10 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
 
   // Load assignees
   useEffect(() => {
-    AsyncStorage.getItem('work2_assignees').then((v) => {
+    AsyncStorage.getItem(`${mode}_assignees`).then((v) => {
       if (v) setAssignees(JSON.parse(v));
     });
-    AsyncStorage.getItem('work2_section_orders').then((v) => {
+    AsyncStorage.getItem(`${mode}_section_orders`).then((v) => {
       if (v) setSectionOrders(JSON.parse(v));
     });
   }, []);
@@ -1002,14 +1004,14 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       const next = prev.map((t) => t.id === childId
         ? { ...t, parent_id: newParentId, milestone: parent?.milestone ?? newMilestone, product: parent?.product ?? t.product }
         : t);
-      AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
+      AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
       return next;
     });
   }, [tasks]);
 
   const createAndReparentTask = useCallback((childId: string, parentTitle: string, newMilestone: string | null, product: string | null) => {
     const newParent: Task = {
-      id: uid(), mode: 'work2', title: parentTitle, status: 'todo', type: 'task',
+      id: uid(), mode: mode, title: parentTitle, status: 'todo', type: 'task',
       product, milestone: newMilestone, parent_id: null,
       note: null, business: null, priority: null,
       start_date: null, due_date: null, end_date: null,
@@ -1020,7 +1022,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       const next = [...prev.map((t) => t.id === childId
         ? { ...t, parent_id: newParent.id, milestone: newMilestone, product }
         : t), newParent];
-      AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
+      AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
       return next;
     });
   }, []);
@@ -1028,7 +1030,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
   const saveSectionOrder = useCallback((key: string, order: string[]) => {
     setSectionOrders((prev) => {
       const next = { ...prev, [key]: order };
-      AsyncStorage.setItem('work2_section_orders', JSON.stringify(next));
+      AsyncStorage.setItem(`${mode}_section_orders`, JSON.stringify(next));
       return next;
     });
   }, []);
@@ -1064,14 +1066,14 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
 
   const saveAssignees = async (next: Record<string, string>) => {
     setAssignees(next);
-    await AsyncStorage.setItem('work2_assignees', JSON.stringify(next));
+    await AsyncStorage.setItem(`${mode}_assignees`, JSON.stringify(next));
   };
 
   // 캐시 + 상태 동시 업데이트 (Supabase 오프라인 대응)
   const updateLocalTask = useCallback((taskId: string, updates: Partial<Task>) => {
     setTasks((prev) => {
       const next = prev.map((tk) => tk.id === taskId ? { ...tk, ...updates, updated_at: new Date().toISOString() } : tk);
-      AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
+      AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
       return next;
     });
     supabase.from('tasks').update({ ...updates, updated_at: new Date().toISOString() }).eq('id', taskId);
@@ -1085,7 +1087,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
   const runSeed = async () => {
     const ins = async (title: string, status: string, pid: string | null, ms: string, due: string | null) => {
       const { data, error } = await supabase.from('tasks').insert({
-        title, status, type: 'task', mode: 'work2', product: '라이더앱',
+        title, status, type: 'task', mode: mode, product: '라이더앱',
         milestone: ms, parent_id: pid, due_date: due, checklist: [], user_id: userId,
       }).select('id').single();
       if (error) { alert('insert error: ' + error.message + ' | ' + JSON.stringify(error)); throw error; }
@@ -1137,14 +1139,14 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
 
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
-    const cacheKey = 'flux_tasks_cache_work2_v2';
+    const cacheKey = `flux_tasks_cache_${mode}_v2`;
     const cached = await AsyncStorage.getItem(cacheKey);
     const cachedTasks: Task[] = cached ? JSON.parse(cached) : [];
     if (cachedTasks.length > 0) setTasks(cachedTasks);
     const { data: taskData, error: taskError } = await supabase
       .from('tasks')
       .select('*')
-      .eq('mode', 'work2')
+      .eq('mode', mode)
       .eq('user_id', userId ?? null)
       .order('created_at', { ascending: true });
     if (taskError || !taskData) return;
@@ -1201,7 +1203,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     setCollapsedSections((prev) => {
       const next = new Set(prev);
       next.has(key) ? next.delete(key) : next.add(key);
-      AsyncStorage.setItem('work2_collapsed_sections', JSON.stringify([...next]));
+      AsyncStorage.setItem(`${mode}_collapsed_sections`, JSON.stringify([...next]));
       return next;
     });
   };
@@ -1210,7 +1212,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     setCollapsed((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
-      AsyncStorage.setItem('work2_collapsed', JSON.stringify([...next]));
+      AsyncStorage.setItem(`${mode}_collapsed`, JSON.stringify([...next]));
       return next;
     });
   };
@@ -1263,7 +1265,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       const next = prev.map((tk) => tk.id === taskId
         ? { ...tk, task_issues: [...(tk.task_issues ?? []), newIssue] }
         : tk);
-      AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
+      AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
       return next;
     });
   };
@@ -1288,7 +1290,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
 
     const newTask: Task = {
       id: uid(),
-      mode: 'work2',
+      mode: mode,
       title,
       status: 'todo',
       type: 'task',
@@ -1307,7 +1309,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     // 로컬 즉시 반영
     setTasks((prev) => {
       const next = [...prev, newTask];
-      AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
+      AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
       return next;
     });
     setAddTarget(null);
@@ -1315,7 +1317,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
 
     // 백그라운드로 Supabase 동기화 시도
     supabase.from('tasks').insert({
-      id: newTask.id, title, status: 'todo', type: 'task', mode: 'work2',
+      id: newTask.id, title, status: 'todo', type: 'task', mode: mode,
       parent_id: addTarget.parentId,
       product: addTarget.rawProduct,
       milestone: addTarget.rawMilestone,
@@ -1333,7 +1335,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     // 로컬 즉시 반영
     setTasks((prev) => {
       const next = prev.filter((tk) => tk.id !== id && tk.parent_id !== id);
-      AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
+      AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
       return next;
     });
     // 백그라운드 Supabase 동기화
@@ -1387,7 +1389,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
               const next = prev.map((tk) => tk.id === task.id
                 ? { ...tk, task_issues: (tk.task_issues ?? []).filter((i) => i.id !== issueId) }
                 : tk);
-              AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
+              AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
               return next;
             });
           }}
@@ -1434,7 +1436,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
             const rootIds = new Set(tasks.filter((tk) => !tk.parent_id).map((tk) => tk.id));
             const depth1Ids = tasks.filter((tk) => tk.parent_id && rootIds.has(tk.parent_id)).map((tk) => tk.id);
             setCollapsed(new Set(depth1Ids));
-            AsyncStorage.setItem('work2_collapsed', JSON.stringify(depth1Ids));
+            AsyncStorage.setItem(`${mode}_collapsed`, JSON.stringify(depth1Ids));
           }}
           style={{ padding: 4 }}
           hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -1444,9 +1446,9 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
         <TouchableOpacity
           onPress={() => {
             setCollapsed(new Set());
-            AsyncStorage.setItem('work2_collapsed', JSON.stringify([]));
+            AsyncStorage.setItem(`${mode}_collapsed`, JSON.stringify([]));
             setCollapsedSections(new Set());
-            AsyncStorage.setItem('work2_collapsed_sections', JSON.stringify([]));
+            AsyncStorage.setItem(`${mode}_collapsed_sections`, JSON.stringify([]));
           }}
           style={{ padding: 4 }}
           hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -1730,7 +1732,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
         onClose={() => setShowAddSection(false)}
         onAdd={(product, milestone, title) => {
           const newTask: Task = {
-            id: uid(), mode: 'work2', title, status: 'todo', type: 'task',
+            id: uid(), mode: mode, title, status: 'todo', type: 'task',
             product, milestone, parent_id: null,
             note: null, business: null, priority: null,
             start_date: null, due_date: null, end_date: null,
@@ -1739,11 +1741,11 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
           };
           setTasks((prev) => {
             const next = [...prev, newTask];
-            AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
+            AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
             return next;
           });
           supabase.from('tasks').insert({
-            id: newTask.id, title, status: 'todo', type: 'task', mode: 'work2',
+            id: newTask.id, title, status: 'todo', type: 'task', mode: mode,
             product, milestone, checklist: [], user_id: userId ?? null,
           });
         }}
@@ -1833,7 +1835,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
             onLinkIssue={async (taskId, repo, num) => { await commitIssue(taskId, repo, num); }}
             onCreateTask={async (title, product, milestone, repo, issueNum) => {
               const newTask: Task = {
-                id: uid(), mode: 'work2', title, status: 'todo', type: 'task',
+                id: uid(), mode: mode, title, status: 'todo', type: 'task',
                 product, milestone, parent_id: null, note: null, business: null,
                 priority: null, start_date: null, due_date: null, end_date: null,
                 checklist: [], created_at: new Date().toISOString(),
@@ -1845,7 +1847,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
                 const withIssue = { ...data, task_issues: [{ id: uid(), task_id: data.id, github_repo: repo, github_issue_number: issueNum, created_at: new Date().toISOString() }] };
                 setTasks((prev) => {
                   const next = [...prev, withIssue];
-                  AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
+                  AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
                   return next;
                 });
               }
