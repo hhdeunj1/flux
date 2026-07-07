@@ -103,7 +103,7 @@ export function IssueBoardView({ C, config, userId, myUsername }: Props) {
     setTaskSearch('');
   };
 
-  const [bulkLoading, setBulkLoading] = useState<string | null>(null); // product key
+  const [bulkLoading, setBulkLoading] = useState<string | null>(null); // product key or 'ALL'
 
   const handleBulkImport = async (product: string, issues: GitHubIssueDetail[]) => {
     if (!myUsername) return;
@@ -111,6 +111,38 @@ export function IssueBoardView({ C, config, userId, myUsername }: Props) {
     if (mine.length === 0) return;
     setBulkLoading(product);
     for (const issue of mine) {
+      const { data: newTask } = await supabase
+        .from('tasks')
+        .insert({
+          title: issue.title,
+          status: 'todo',
+          type: 'task',
+          mode: 'work2',
+          user_id: userId,
+          milestone: selMilestone,
+        })
+        .select('*')
+        .single();
+      if (newTask) {
+        await supabase.from('task_issues').insert({
+          task_id: newTask.id,
+          github_repo: issue.repo,
+          github_issue_number: issue.number,
+        });
+        setTasks((prev) => [newTask, ...prev]);
+      }
+    }
+    setBulkLoading(null);
+  };
+
+  const handleBulkImportAll = async () => {
+    if (!myUsername) return;
+    const allMyIssues = sections.flatMap((s) =>
+      s.issues.filter((i) => i.assignees.includes(myUsername))
+    );
+    if (allMyIssues.length === 0) return;
+    setBulkLoading('ALL');
+    for (const issue of allMyIssues) {
       const { data: newTask } = await supabase
         .from('tasks')
         .insert({
@@ -157,11 +189,33 @@ export function IssueBoardView({ C, config, userId, myUsername }: Props) {
             </TouchableOpacity>
           ))}
         </ScrollView>
-        <View style={{ marginRight: 16, minWidth: 40, alignItems: 'flex-end' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: 16 }}>
           {loading
             ? <ActivityIndicator size="small" color={C.text3} />
             : fetched && <Text style={s.totalBadge}>{totalCount}개</Text>
           }
+          {myUsername && fetched && (() => {
+            const myTotal = sections.reduce(
+              (n, s) => n + s.issues.filter((i) => i.assignees.includes(myUsername)).length, 0
+            );
+            if (myTotal === 0) return null;
+            const isLoading = bulkLoading === 'ALL';
+            return (
+              <TouchableOpacity
+                style={s.bulkAllBtn}
+                onPress={handleBulkImportAll}
+                disabled={!!bulkLoading}
+              >
+                {isLoading
+                  ? <ActivityIndicator size="small" color="#30D158" />
+                  : <>
+                      <Ionicons name="person-circle" size={13} color="#30D158" />
+                      <Text style={s.bulkAllBtnText}>내 이슈 전체 {myTotal}개</Text>
+                    </>
+                }
+              </TouchableOpacity>
+            );
+          })()}
         </View>
       </View>
 
@@ -329,6 +383,13 @@ const styles = (C: ThemeColors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border,
   },
   sectionTitle: { fontSize: 13, fontWeight: '600', color: C.text2, flex: 1 },
+  bulkAllBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
+    backgroundColor: '#30D15820', borderWidth: StyleSheet.hairlineWidth, borderColor: '#30D15866',
+    minWidth: 32, justifyContent: 'center',
+  },
+  bulkAllBtnText: { fontSize: 12, color: '#30D158', fontWeight: '600' },
   bulkBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: 9, paddingVertical: 4, borderRadius: 6,
