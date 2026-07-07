@@ -121,7 +121,13 @@ export async function fetchMilestoneNumber(repo: string, milestoneTitle: string)
   );
   if (!res.ok) return null;
   const data: any[] = await res.json();
-  const found = data.find((m) => m.title === milestoneTitle);
+  // 'v4.12' → '4.12' 로 정규화 후 GitHub 마일스톤 title에 포함되는지 확인
+  const normalized = milestoneTitle.replace(/^v/, '');
+  const found = data.find((m) =>
+    m.title === milestoneTitle ||
+    m.title === normalized ||
+    m.title.startsWith(normalized + '.')
+  );
   return found?.number ?? null;
 }
 
