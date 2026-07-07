@@ -14,7 +14,7 @@ export const LIGHT_C = { bg:'#F2F2F7', bg2:'#FFFFFF', bg3:'#F2F2F7', card:'#FFFF
 export type ThemeColors = typeof DARK_C;
 
 // ─── 상수 ──────────────────────────────────────────────────
-export const PRODUCTS   = ['라이더앱', '택시기사앱', '드라이버앱'];
+export const PRODUCTS   = ['라이더앱', '택시기사앱', '드라이버앱', '키오스크'];
 export const MILESTONES = ['v4.10', 'v4.11', 'v4.12', 'TBD', 'ETC'];
 export const BUSINESSES = ['BTS', '이응패스', '영암택시', '영덕택시', '동특교', '내부개선'];
 
@@ -41,19 +41,22 @@ export const PANEL_WIDTH = 300;
 
 // 프로덕트/마일스톤 dot 색상 (chip은 중립 배경, dot만 컬러)
 export const PRODUCT_DOT: Record<string, string> = {
-  '라이더앱':   '#D07070', // 📍 머티드 레드
-  '택시기사앱': '#C8A84A', // 🚕 머티드 옐로
-  '드라이버앱': '#5A9EC8', // 🚐 머티드 블루
+  '라이더앱':   '#D07070',
+  '택시기사앱': '#C8A84A',
+  '드라이버앱': '#5A9EC8',
+  '키오스크':   '#7C6EA8',
 };
 export const PRODUCT_EMOJI: Record<string, string> = {
   '라이더앱':   '📍',
   '택시기사앱': '🚕',
   '드라이버앱': '🚐',
+  '키오스크':   '🖥️',
 };
 export const PRODUCT_SHORT: Record<string, string> = {
   '라이더앱':   '라앱',
   '택시기사앱': '택시',
   '드라이버앱': '드앱',
+  '키오스크':   '키오',
 };
 export const BUSINESS_DOT: Record<string, string> = {
   'BTS':     '#FFD60A', // Yellow
