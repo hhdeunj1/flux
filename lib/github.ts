@@ -103,6 +103,7 @@ export type GitHubIssueDetail = {
   html_url: string;
   milestone_title: string | null;
   created_at: string;
+  assignees: string[];
 };
 
 async function getHeaders(): Promise<Record<string, string>> {
@@ -152,6 +153,7 @@ export async function fetchIssuesByMilestone(repo: string, milestoneTitle: strin
       html_url: i.html_url as string,
       milestone_title: i.milestone?.title ?? null,
       created_at: i.created_at as string,
+      assignees: (i.assignees as any[]).map((a) => a.login as string),
     }));
 }
 

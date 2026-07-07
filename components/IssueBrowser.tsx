@@ -162,6 +162,11 @@ export function IssueBrowser({ C, milestones, defaultMilestone, tasks, onLinkIss
                 <View style={{ flex: 1 }}>
                   <Text style={s.issueNum}>#{issue.number}</Text>
                   <Text style={s.issueTitle} numberOfLines={2}>{issue.title}</Text>
+                  {issue.assignees.length > 0 && (
+                    <Text style={s.issueAssignees} numberOfLines={1}>
+                      👤 {issue.assignees.join(', ')}
+                    </Text>
+                  )}
                 </View>
                 <TouchableOpacity
                   style={s.linkBtn}
@@ -275,6 +280,7 @@ const styles = (C: ThemeColors) => StyleSheet.create({
   },
   issueNum: { fontSize: 10, color: C.text3, fontVariant: ['tabular-nums'], marginBottom: 2 },
   issueTitle: { fontSize: 13, color: C.text, lineHeight: 17 },
+  issueAssignees: { fontSize: 11, color: C.text3, marginTop: 3 },
   linkBtn: {
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 5,
     backgroundColor: '#0A84FF22', borderWidth: StyleSheet.hairlineWidth, borderColor: '#0A84FF55',
