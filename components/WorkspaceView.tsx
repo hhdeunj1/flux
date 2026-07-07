@@ -1155,8 +1155,13 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
   // Fetch tasks
   const fetchTasks = useCallback(async () => {
     const cacheKey = `flux_tasks_cache_${mode}_v2`;
-    const cached = await AsyncStorage.getItem(cacheKey);
+    const deletedKey = `flux_deleted_${mode}_v2`;
+    const [cached, deletedRaw] = await Promise.all([
+      AsyncStorage.getItem(cacheKey),
+      AsyncStorage.getItem(deletedKey),
+    ]);
     const cachedTasks: Task[] = cached ? JSON.parse(cached) : [];
+    const deletedIds = new Set<string>(deletedRaw ? JSON.parse(deletedRaw) : []);
     if (cachedTasks.length > 0) setTasks(cachedTasks);
     const { data: taskData, error: taskError } = await supabase
       .from('tasks')
@@ -1195,13 +1200,16 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
 
     const cachedById = new Map(cachedTasks.map((t) => [t.id, t]));
     const supabaseById = new Map(taskData.map((t) => [t.id, t]));
-    const merged = taskData.map((task) => {
-      const cached = cachedById.get(task.id);
-      // 캐시가 더 최신이면 캐시 우선 (Supabase 저장 실패한 로컬 편집 보존)
-      const base = (cached && cached.updated_at > task.updated_at) ? cached : task;
-      return { ...base, task_issues: issuesByTaskId[task.id] ?? [] };
-    });
-    const localOnly = cachedTasks.filter((t) => !supabaseById.has(t.id));
+    // 삭제된 ID는 Supabase에서 살아와도 제외
+    const merged = taskData
+      .filter((t) => !deletedIds.has(t.id) && !deletedIds.has(t.parent_id ?? ''))
+      .map((task) => {
+        const cached = cachedById.get(task.id);
+        // 캐시가 더 최신이면 캐시 우선 (Supabase 저장 실패한 로컬 편집 보존)
+        const base = (cached && cached.updated_at > task.updated_at) ? cached : task;
+        return { ...base, task_issues: issuesByTaskId[task.id] ?? [] };
+      });
+    const localOnly = cachedTasks.filter((t) => !supabaseById.has(t.id) && !deletedIds.has(t.id));
     const final = [...merged, ...localOnly];
     setTasks(final);
     const initialLinkMap: Record<string, TaskLink[]> = {};
@@ -1367,15 +1375,30 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       ? window.confirm('이 항목을 삭제할까요?')
       : true;
     if (!confirmed) return;
-    // 로컬 즉시 반영
+    // 로컬 즉시 반영 + 삭제 ID 기록 (새로고침 시에도 제외)
     setTasks((prev) => {
       const next = prev.filter((tk) => tk.id !== id && tk.parent_id !== id);
       AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
       return next;
     });
-    // 백그라운드 Supabase 동기화
-    supabase.from('tasks').delete().eq('parent_id', id);
-    supabase.from('tasks').delete().eq('id', id);
+    const deletedKey = `flux_deleted_${mode}_v2`;
+    AsyncStorage.getItem(deletedKey).then((raw) => {
+      const ids: string[] = raw ? JSON.parse(raw) : [];
+      if (!ids.includes(id)) ids.push(id);
+      AsyncStorage.setItem(deletedKey, JSON.stringify(ids));
+    });
+    // Supabase 삭제 (재시도)
+    const del = async (retries = 3) => {
+      const [r1, r2] = await Promise.all([
+        supabase.from('tasks').delete().eq('parent_id', id),
+        supabase.from('tasks').delete().eq('id', id),
+      ]);
+      if ((r1.error || r2.error) && retries > 0) {
+        await new Promise((r) => setTimeout(r, 1000));
+        return del(retries - 1);
+      }
+    };
+    del();
   };
 
   // Recursive render
