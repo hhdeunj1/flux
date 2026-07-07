@@ -117,7 +117,7 @@ export async function fetchMilestoneNumber(repo: string, milestoneTitle: string)
   const headers = await getHeaders();
   const [owner, repoName] = repo.split('/');
   const res = await fetch(
-    `https://api.github.com/repos/${owner}/${repoName}/milestones?state=all&per_page=50`,
+    `https://api.github.com/repos/${owner}/${repoName}/milestones?state=open&per_page=100`,
     { headers }
   );
   if (!res.ok) return null;
