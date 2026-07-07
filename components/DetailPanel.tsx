@@ -809,8 +809,13 @@ export function DetailPanel({ task, repos, mode, isLight, onSave, onDelete, onCl
     setIsPosting(true);
     try {
       const issueNumber = await createIssue(issueRepo, title, body ?? '');
-      await supabase.from('task_issues').insert({ task_id: task.id, github_repo: issueRepo, github_issue_number: issueNumber });
-      setMainIssue({ id: uid(), repo: issueRepo, number: String(issueNumber) });
+      const { data: issueRow, error: insertErr } = await supabase
+        .from('task_issues')
+        .insert({ task_id: task.id, github_repo: issueRepo, github_issue_number: issueNumber })
+        .select()
+        .single();
+      if (insertErr) throw new Error(`DB 저장 실패: ${insertErr.message}`);
+      setMainIssue({ id: issueRow.id, repo: issueRepo, number: String(issueNumber) });
       setGenerateMsg(`✓ #${issueNumber} 생성 완료`);
       setIssuePreview(null);
     } catch (e: any) {

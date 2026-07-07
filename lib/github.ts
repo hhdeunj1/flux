@@ -116,20 +116,25 @@ async function getHeaders(): Promise<Record<string, string>> {
 export async function fetchMilestoneNumber(repo: string, milestoneTitle: string): Promise<number | null> {
   const headers = await getHeaders();
   const [owner, repoName] = repo.split('/');
-  const res = await fetch(
-    `https://api.github.com/repos/${owner}/${repoName}/milestones?state=open&per_page=100`,
-    { headers }
-  );
-  if (!res.ok) return null;
-  const data: any[] = await res.json();
-  // 'v4.12' → '4.12' 로 정규화 후 GitHub 마일스톤 title에 포함되는지 확인
   const normalized = milestoneTitle.replace(/^v/, '');
-  const found = data.find((m) =>
-    m.title === milestoneTitle ||
-    m.title === normalized ||
-    m.title.startsWith(normalized + '.')
-  );
-  return found?.number ?? null;
+  // 페이지네이션으로 전체 마일스톤 탐색 (state=all, closed 포함)
+  for (let page = 1; page <= 5; page++) {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repoName}/milestones?state=all&per_page=100&page=${page}`,
+      { headers }
+    );
+    if (!res.ok) return null;
+    const data: any[] = await res.json();
+    if (data.length === 0) break;
+    const found = data.find((m) =>
+      m.title === milestoneTitle ||
+      m.title === normalized ||
+      m.title === `v${normalized}`
+    );
+    if (found) return found.number;
+    if (data.length < 100) break; // 마지막 페이지
+  }
+  return null;
 }
 
 export async function fetchIssuesByMilestone(repo: string, milestoneTitle: string): Promise<GitHubIssueDetail[]> {

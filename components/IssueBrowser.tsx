@@ -48,20 +48,28 @@ export function IssueBrowser({ C, milestones, defaultMilestone, tasks, onLinkIss
     );
   };
 
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
   const fetchIssues = useCallback(async () => {
     if (!selMilestone || selProducts.length === 0) return;
     setLoading(true);
     setFetched(false);
+    setFetchError(null);
     const repos = selProducts.map((p) => PRODUCT_REPO_MAP[p]).filter(Boolean);
-    const results = await Promise.all(
-      repos.map(async (repo) => {
-        const issues = await fetchIssuesByMilestone(repo, selMilestone);
-        return { repo, product: REPO_SHORT[repo] ?? repo, issues };
-      })
-    );
-    setGroups(results.filter((g) => g.issues.length > 0));
-    setLoading(false);
-    setFetched(true);
+    try {
+      const results = await Promise.all(
+        repos.map(async (repo) => {
+          const issues = await fetchIssuesByMilestone(repo, selMilestone);
+          return { repo, product: REPO_SHORT[repo] ?? repo, issues };
+        })
+      );
+      setGroups(results.filter((g) => g.issues.length > 0));
+      setFetched(true);
+    } catch (e: any) {
+      setFetchError(e?.message ?? 'GitHub API 오류');
+    } finally {
+      setLoading(false);
+    }
   }, [selMilestone, selProducts]);
 
   const totalCount = groups.reduce((s, g) => s + g.issues.length, 0);
@@ -73,18 +81,28 @@ export function IssueBrowser({ C, milestones, defaultMilestone, tasks, onLinkIss
   const handleLinkToTask = async (task: Task) => {
     if (!linkingIssue) return;
     setLinkLoading(true);
-    await onLinkIssue(task.id, linkingIssue.repo, linkingIssue.number);
-    setLinkLoading(false);
-    setLinkingIssue(null);
-    setTaskSearch('');
+    try {
+      await onLinkIssue(task.id, linkingIssue.repo, linkingIssue.number);
+      setLinkingIssue(null);
+      setTaskSearch('');
+    } catch {
+      // silent — parent already handles errors
+    } finally {
+      setLinkLoading(false);
+    }
   };
 
   const handleCreateTask = async (issue: GitHubIssueDetail, product: string) => {
     setLinkLoading(true);
-    await onCreateTask(issue.title, product, selMilestone, issue.repo, issue.number);
-    setLinkLoading(false);
-    setLinkingIssue(null);
-    setTaskSearch('');
+    try {
+      await onCreateTask(issue.title, product, selMilestone, issue.repo, issue.number);
+      setLinkingIssue(null);
+      setTaskSearch('');
+    } catch {
+      // silent — parent already handles errors
+    } finally {
+      setLinkLoading(false);
+    }
   };
 
   const s = styles(C);
@@ -146,7 +164,12 @@ export function IssueBrowser({ C, milestones, defaultMilestone, tasks, onLinkIss
 
       {/* Results */}
       <ScrollView style={{ flex: 1, marginTop: 12 }}>
-        {fetched && totalCount === 0 && (
+        {fetchError && (
+          <Text style={{ color: '#FF3B30', textAlign: 'center', marginTop: 24, fontSize: 13 }}>
+            {fetchError}
+          </Text>
+        )}
+        {!fetchError && fetched && totalCount === 0 && (
           <Text style={{ color: C.text3, textAlign: 'center', marginTop: 24, fontSize: 13 }}>
             {selMilestone} 마일스톤 이슈가 없습니다
           </Text>
@@ -198,8 +221,13 @@ export function IssueBrowser({ C, milestones, defaultMilestone, tasks, onLinkIss
               autoFocus
             />
 
+            {filteredTasks.length > 50 && (
+              <Text style={{ fontSize: 11, color: C.text3, marginBottom: 4 }}>
+                {filteredTasks.length}개 중 50개 표시 — 검색어로 필터하세요
+              </Text>
+            )}
             <FlatList
-              data={filteredTasks.slice(0, 30)}
+              data={filteredTasks.slice(0, 50)}
               keyExtractor={(t) => t.id}
               style={{ maxHeight: 260 }}
               renderItem={({ item }) => (

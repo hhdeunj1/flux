@@ -1005,32 +1005,51 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
 
   const reparentTask = useCallback((childId: string, newParentId: string, newMilestone: string | null) => {
     const parent = tasks.find((t) => t.id === newParentId);
+    const updates = { parent_id: newParentId, milestone: parent?.milestone ?? newMilestone, product: parent?.product };
     setTasks((prev) => {
-      const next = prev.map((t) => t.id === childId
-        ? { ...t, parent_id: newParentId, milestone: parent?.milestone ?? newMilestone, product: parent?.product ?? t.product }
-        : t);
+      const next = prev.map((t) => t.id === childId ? { ...t, ...updates } : t);
       AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
       return next;
     });
+    supabase.from('tasks').update({ parent_id: newParentId, milestone: parent?.milestone ?? newMilestone, product: parent?.product ?? undefined }).eq('id', childId).then(() => {});
   }, [tasks]);
 
-  const createAndReparentTask = useCallback((childId: string, parentTitle: string, newMilestone: string | null, product: string | null) => {
+  const createAndReparentTask = useCallback(async (childId: string, parentTitle: string, newMilestone: string | null, product: string | null) => {
+    const tempId = uid();
+    const now = new Date().toISOString();
     const newParent: Task = {
-      id: uid(), mode: mode, title: parentTitle, status: 'todo', type: 'task',
+      id: tempId, mode, title: parentTitle, status: 'todo', type: 'task',
       product, milestone: newMilestone, parent_id: null,
       note: null, business: null, priority: null,
       start_date: null, due_date: null, end_date: null,
-      checklist: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      checklist: [], created_at: now, updated_at: now,
       user_id: userId ?? null, task_issues: [],
     };
     setTasks((prev) => {
       const next = [...prev.map((t) => t.id === childId
-        ? { ...t, parent_id: newParent.id, milestone: newMilestone, product }
+        ? { ...t, parent_id: tempId, milestone: newMilestone, product }
         : t), newParent];
       AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
       return next;
     });
-  }, []);
+    // Supabase: insert parent (UUID 자동생성), 실제 id 받아서 교체
+    const { data } = await supabase.from('tasks').insert({
+      title: parentTitle, status: 'todo', type: 'task', mode,
+      product, milestone: newMilestone, checklist: [], user_id: userId ?? null,
+    }).select().single();
+    if (data) {
+      await supabase.from('tasks').update({ parent_id: data.id, milestone: newMilestone, product }).eq('id', childId);
+      setTasks((prev) => {
+        const next = prev.map((t) => {
+          if (t.id === tempId) return { ...t, id: data.id, created_at: data.created_at, updated_at: data.updated_at };
+          if (t.parent_id === tempId) return { ...t, parent_id: data.id };
+          return t;
+        });
+        AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
+        return next;
+      });
+    }
+  }, [mode, userId]);
 
   const saveSectionOrder = useCallback((key: string, order: string[]) => {
     setSectionOrders((prev) => {
@@ -1172,10 +1191,9 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     if (taskError || !taskData) return;
     if (taskData.length === 0 && cachedTasks.length > 0) return;
     const taskIds = taskData.map((t) => t.id);
-    const { data: issueData } = await supabase
-      .from('task_issues')
-      .select('*')
-      .in('task_id', taskIds);
+    const { data: issueData } = taskIds.length > 0
+      ? await supabase.from('task_issues').select('*').in('task_id', taskIds)
+      : { data: [] };
     const issuesByTaskId: Record<string, TaskIssue[]> = {};
     (issueData ?? []).forEach((issue) => {
       if (!issuesByTaskId[issue.task_id]) issuesByTaskId[issue.task_id] = [];
@@ -1216,7 +1234,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     final.forEach((t) => { if (t.links && t.links.length > 0) initialLinkMap[t.id] = t.links; });
     setLinkMap(initialLinkMap);
     await AsyncStorage.setItem(cacheKey, JSON.stringify(final));
-  }, [userId]);
+  }, [userId, mode]);
 
   useEffect(() => {
     fetchTasks();
@@ -1302,11 +1320,15 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
 
   // Link issue
   const commitIssue = async (taskId: string, repo: string, num: number) => {
-    const newIssue = { id: uid(), task_id: taskId, github_repo: repo, github_issue_number: num, created_at: new Date().toISOString() };
-    await supabase.from('task_issues').insert({ task_id: taskId, github_repo: repo, github_issue_number: num });
+    const { data: issueData } = await supabase
+      .from('task_issues')
+      .insert({ task_id: taskId, github_repo: repo, github_issue_number: num })
+      .select()
+      .single();
+    if (!issueData) return;
     setTasks((prev) => {
       const next = prev.map((tk) => tk.id === taskId
-        ? { ...tk, task_issues: [...(tk.task_issues ?? []), newIssue] }
+        ? { ...tk, task_issues: [...(tk.task_issues ?? []), issueData] }
         : tk);
       AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
       return next;
@@ -1943,8 +1965,12 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
                 checklist: [], user_id: userId ?? null,
               }).select().single();
               if (data) {
-                await supabase.from('task_issues').insert({ task_id: data.id, github_repo: repo, github_issue_number: issueNum });
-                const withIssue = { ...data, task_issues: [{ id: uid(), task_id: data.id, github_repo: repo, github_issue_number: issueNum, created_at: new Date().toISOString() }] };
+                const { data: issueRow } = await supabase
+                  .from('task_issues')
+                  .insert({ task_id: data.id, github_repo: repo, github_issue_number: issueNum })
+                  .select()
+                  .single();
+                const withIssue = { ...data, task_issues: issueRow ? [issueRow] : [] };
                 setTasks((prev) => {
                   const next = [...prev, withIssue];
                   AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
