@@ -1141,7 +1141,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     if (cachedTasks.length > 0) setTasks(cachedTasks);
     const { data: taskData, error: taskError } = await supabase
       .from('tasks')
-      .select('*, task_issues(*)')
+      .select('*')
       .eq('mode', 'work2')
       .eq('user_id', userId ?? null)
       .order('created_at', { ascending: true });
