@@ -1,29 +1,44 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
-  ActivityIndicator, Linking,
+  ActivityIndicator, Linking, FlatList, TextInput, Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemeColors } from '../lib/constants';
-import { IssueBoardConfig } from '../lib/supabase';
+import { supabase, IssueBoardConfig, Task, TaskIssue } from '../lib/supabase';
 import { PRODUCT_REPO_MAP, fetchIssuesByMilestone, GitHubIssueDetail } from '../lib/github';
 
 type Props = {
   C: ThemeColors;
   config: IssueBoardConfig;
+  userId: string;
 };
 
-type Column = {
-  product: string;
-  issues: GitHubIssueDetail[];
-};
+type Section = { product: string; issues: GitHubIssueDetail[] };
 
-export function IssueBoardView({ C, config }: Props) {
+export function IssueBoardView({ C, config, userId }: Props) {
   const { products, milestones } = config;
   const [selMilestone, setSelMilestone] = useState(milestones[0] ?? '');
-  const [columns, setColumns] = useState<Column[]>([]);
+  const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetched, setFetched] = useState(false);
+
+  // 태스크 연결용
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [linkingIssue, setLinkingIssue] = useState<GitHubIssueDetail | null>(null);
+  const [taskSearch, setTaskSearch] = useState('');
+  const [linkLoading, setLinkLoading] = useState(false);
+
+  // 태스크 로드
+  useEffect(() => {
+    supabase
+      .from('tasks')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('mode', 'work2')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setTasks(data ?? []));
+  }, [userId]);
 
   const loadIssues = useCallback(async (milestone: string) => {
     if (!milestone || products.length === 0) return;
@@ -37,7 +52,7 @@ export function IssueBoardView({ C, config }: Props) {
         return { product, issues };
       })
     );
-    setColumns(results);
+    setSections(results.filter((s) => s.issues.length > 0));
     setLoading(false);
     setFetched(true);
   }, [products]);
@@ -46,8 +61,53 @@ export function IssueBoardView({ C, config }: Props) {
     if (selMilestone) loadIssues(selMilestone);
   }, [selMilestone, loadIssues]);
 
+  const handleLinkToTask = async (task: Task) => {
+    if (!linkingIssue) return;
+    setLinkLoading(true);
+    await supabase.from('task_issues').insert({
+      task_id: task.id,
+      github_repo: linkingIssue.repo,
+      github_issue_number: linkingIssue.number,
+    });
+    setLinkLoading(false);
+    setLinkingIssue(null);
+    setTaskSearch('');
+  };
+
+  const handleCreateTask = async () => {
+    if (!linkingIssue) return;
+    setLinkLoading(true);
+    const { data: newTask } = await supabase
+      .from('tasks')
+      .insert({
+        title: linkingIssue.title,
+        status: 'todo',
+        type: 'task',
+        mode: 'work2',
+        user_id: userId,
+        milestone: selMilestone,
+      })
+      .select('*')
+      .single();
+    if (newTask) {
+      await supabase.from('task_issues').insert({
+        task_id: newTask.id,
+        github_repo: linkingIssue.repo,
+        github_issue_number: linkingIssue.number,
+      });
+      setTasks((prev) => [newTask, ...prev]);
+    }
+    setLinkLoading(false);
+    setLinkingIssue(null);
+    setTaskSearch('');
+  };
+
+  const filteredTasks = tasks.filter(
+    (t) => !taskSearch || t.title.toLowerCase().includes(taskSearch.toLowerCase())
+  );
+
   const s = styles(C);
-  const totalCount = columns.reduce((n, c) => n + c.issues.length, 0);
+  const totalCount = sections.reduce((n, sec) => n + sec.issues.length, 0);
 
   return (
     <View style={s.root}>
@@ -64,61 +124,134 @@ export function IssueBoardView({ C, config }: Props) {
             </TouchableOpacity>
           ))}
         </ScrollView>
-        {fetched && !loading && (
-          <Text style={s.totalBadge}>{totalCount}개</Text>
-        )}
-        {loading && <ActivityIndicator size="small" color={C.text3} style={{ marginRight: 16 }} />}
+        <View style={{ marginRight: 16, minWidth: 40, alignItems: 'flex-end' }}>
+          {loading
+            ? <ActivityIndicator size="small" color={C.text3} />
+            : fetched && <Text style={s.totalBadge}>{totalCount}개</Text>
+          }
+        </View>
       </View>
 
-      {/* 칸반 보드 */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
-        <View style={s.board}>
-          {columns.map((col) => (
-            <View key={col.product} style={s.column}>
-              {/* 컬럼 헤더 */}
-              <View style={s.colHeader}>
-                <Text style={s.colTitle}>{col.product}</Text>
-                <View style={s.colBadge}>
-                  <Text style={s.colBadgeText}>{col.issues.length}</Text>
-                </View>
-              </View>
-
-              {/* 이슈 카드 목록 */}
-              <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-                {col.issues.length === 0 && fetched && (
-                  <Text style={s.emptyCol}>이슈 없음</Text>
-                )}
-                {col.issues.map((issue) => (
-                  <TouchableOpacity
-                    key={issue.number}
-                    style={s.card}
-                    onPress={() => Linking.openURL(issue.html_url)}
-                    activeOpacity={0.75}
-                  >
-                    <View style={s.cardTopRow}>
-                      <Text style={s.cardNum}>#{issue.number}</Text>
-                    </View>
-                    <Text style={s.cardTitle} numberOfLines={3}>{issue.title}</Text>
-                    {issue.assignees.length > 0 && (
-                      <View style={s.assigneeRow}>
-                        <Ionicons name="person-outline" size={11} color={C.text3} />
-                        <Text style={s.assigneeText} numberOfLines={1}>
-                          {issue.assignees.join(', ')}
-                        </Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+      {/* 이슈 리스트 */}
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+        {fetched && totalCount === 0 && (
+          <Text style={{ color: C.text3, textAlign: 'center', marginTop: 40, fontSize: 13 }}>
+            {selMilestone} 마일스톤에 이슈가 없습니다
+          </Text>
+        )}
+        {sections.map((sec) => (
+          <View key={sec.product} style={s.section}>
+            {/* 프로덕트 섹션 헤더 */}
+            <View style={s.sectionHeader}>
+              <Text style={s.sectionTitle}>{sec.product}</Text>
+              <Text style={s.sectionCount}>{sec.issues.length}</Text>
             </View>
-          ))}
-        </View>
+
+            {/* 이슈 행 */}
+            {sec.issues.map((issue) => (
+              <View key={issue.number} style={s.row}>
+                {/* 이슈 번호 + 제목 */}
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <Text style={s.issueNum}>#{issue.number}</Text>
+                    <TouchableOpacity onPress={() => Linking.openURL(issue.html_url)}>
+                      <Ionicons name="open-outline" size={11} color={C.text4} />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={s.issueTitle} numberOfLines={2}>{issue.title}</Text>
+                  {/* 어싸이니 */}
+                  {issue.assignees.length > 0 && (
+                    <View style={s.assigneeRow}>
+                      <Ionicons name="person-circle-outline" size={14} color={C.text3} />
+                      <Text style={s.assigneeText}>{issue.assignees.join(', ')}</Text>
+                    </View>
+                  )}
+                  {issue.assignees.length === 0 && (
+                    <View style={s.assigneeRow}>
+                      <Ionicons name="person-circle-outline" size={14} color={C.text4} />
+                      <Text style={[s.assigneeText, { color: C.text4 }]}>미배정</Text>
+                    </View>
+                  )}
+                </View>
+                {/* 가져오기 버튼 */}
+                <TouchableOpacity
+                  style={s.importBtn}
+                  onPress={() => { setLinkingIssue(issue); setTaskSearch(''); }}
+                >
+                  <Ionicons name="add-circle-outline" size={13} color="#0A84FF" />
+                  <Text style={s.importBtnText}>가져오기</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        ))}
       </ScrollView>
+
+      {/* 태스크 연결 모달 */}
+      <Modal visible={!!linkingIssue} transparent animationType="fade">
+        <View style={s.overlay}>
+          <View style={[s.picker, { backgroundColor: C.card }]}>
+            <Text style={[s.pickerTitle, { color: C.text }]} numberOfLines={2}>
+              #{linkingIssue?.number} {linkingIssue?.title}
+            </Text>
+            {linkingIssue?.assignees && linkingIssue.assignees.length > 0 && (
+              <Text style={[s.pickerAssignee, { color: C.text3 }]}>
+                👤 {linkingIssue.assignees.join(', ')}
+              </Text>
+            )}
+            <Text style={[s.pickerSub, { color: C.text3 }]}>어느 태스크에 연결할까요?</Text>
+            <TextInput
+              style={[s.search, { backgroundColor: C.input, color: C.text, borderColor: C.border }]}
+              placeholder="태스크 검색..."
+              placeholderTextColor={C.text3}
+              value={taskSearch}
+              onChangeText={setTaskSearch}
+              autoFocus
+            />
+            <FlatList
+              data={filteredTasks.slice(0, 30)}
+              keyExtractor={(t) => t.id}
+              style={{ maxHeight: 240 }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={s.taskItem}
+                  onPress={() => handleLinkToTask(item)}
+                  disabled={linkLoading}
+                >
+                  <Text style={[s.taskItemTitle, { color: C.text }]} numberOfLines={1}>{item.title}</Text>
+                  {item.milestone && (
+                    <Text style={[s.taskItemMeta, { color: C.text3 }]}>{item.milestone}</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+              ItemSeparatorComponent={() => <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: C.border }} />}
+            />
+            <View style={s.pickerActions}>
+              <TouchableOpacity
+                style={[s.createBtn, { borderColor: C.border }]}
+                onPress={handleCreateTask}
+                disabled={linkLoading}
+              >
+                <Text style={[s.createBtnText, { color: C.text2 }]}>+ 새 태스크로 생성</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={s.cancelBtn}
+                onPress={() => { setLinkingIssue(null); setTaskSearch(''); }}
+              >
+                <Text style={s.cancelBtnText}>취소</Text>
+              </TouchableOpacity>
+            </View>
+            {linkLoading && (
+              <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'center', alignItems: 'center', borderRadius: 12 }]}>
+                <ActivityIndicator color="#0A84FF" />
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
-
-const COLUMN_WIDTH = 260;
 
 const styles = (C: ThemeColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
@@ -134,39 +267,55 @@ const styles = (C: ThemeColors) => StyleSheet.create({
   msTabActive: { backgroundColor: '#0A84FF22', borderColor: '#0A84FF88' },
   msTabText: { fontSize: 13, color: C.text3, fontWeight: '500' },
   msTabTextActive: { color: '#0A84FF' },
-  totalBadge: { fontSize: 12, color: C.text3, marginRight: 16, marginLeft: 8 },
-  board: { flexDirection: 'row', padding: 12, gap: 10, flex: 1 },
-  column: {
-    width: COLUMN_WIDTH,
+  totalBadge: { fontSize: 12, color: C.text3 },
+  section: { marginBottom: 4 },
+  sectionHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, paddingVertical: 10,
     backgroundColor: C.bg2,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: C.border,
-    padding: 10,
-    maxHeight: '100%',
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border,
   },
-  colHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginBottom: 10,
+  sectionTitle: { fontSize: 13, fontWeight: '600', color: C.text2, flex: 1 },
+  sectionCount: {
+    fontSize: 11, color: C.text3,
+    backgroundColor: C.bg3, paddingHorizontal: 7, paddingVertical: 2,
+    borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
+    fontVariant: ['tabular-nums'],
   },
-  colTitle: { fontSize: 13, fontWeight: '600', color: C.text2 },
-  colBadge: {
-    backgroundColor: C.bg3, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 1,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: C.border,
+  row: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    paddingHorizontal: 16, paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border,
   },
-  colBadgeText: { fontSize: 11, color: C.text3, fontVariant: ['tabular-nums'] },
-  emptyCol: { fontSize: 12, color: C.text4, textAlign: 'center', marginTop: 20 },
-  card: {
-    backgroundColor: C.bg,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 6,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: C.border,
+  issueNum: { fontSize: 11, color: C.text3, fontVariant: ['tabular-nums'] },
+  issueTitle: { fontSize: 14, color: C.text, lineHeight: 19 },
+  assigneeRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
+  assigneeText: { fontSize: 12, color: C.text3 },
+  importBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6,
+    backgroundColor: '#0A84FF15', borderWidth: StyleSheet.hairlineWidth, borderColor: '#0A84FF55',
+    alignSelf: 'flex-start', marginTop: 2,
   },
-  cardTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  cardNum: { fontSize: 11, color: C.text3, fontVariant: ['tabular-nums'] },
-  cardTitle: { fontSize: 13, color: C.text, lineHeight: 18 },
-  assigneeRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  assigneeText: { fontSize: 11, color: C.text3, flex: 1 },
+  importBtnText: { fontSize: 12, color: '#0A84FF', fontWeight: '500' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },
+  picker: { borderRadius: 12, padding: 16, maxHeight: 520 },
+  pickerTitle: { fontSize: 14, fontWeight: '600', marginBottom: 2 },
+  pickerAssignee: { fontSize: 12, marginBottom: 6 },
+  pickerSub: { fontSize: 12, marginBottom: 10 },
+  search: {
+    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8,
+    fontSize: 13, borderWidth: StyleSheet.hairlineWidth, marginBottom: 8,
+  },
+  taskItem: { paddingVertical: 10, paddingHorizontal: 4 },
+  taskItemTitle: { fontSize: 13 },
+  taskItemMeta: { fontSize: 11, marginTop: 1 },
+  pickerActions: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  createBtn: {
+    flex: 1, paddingVertical: 8, borderRadius: 7,
+    alignItems: 'center', borderWidth: StyleSheet.hairlineWidth,
+  },
+  createBtnText: { fontSize: 13 },
+  cancelBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 7, backgroundColor: '#FF3B3022' },
+  cancelBtnText: { fontSize: 13, color: '#FF3B30' },
 });

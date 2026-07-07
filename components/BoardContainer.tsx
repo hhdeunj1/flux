@@ -249,6 +249,7 @@ export function BoardContainer({ isLight, onToggleLight, userId, username, onSwi
         <IssueBoardView
           C={C}
           config={selBoard.config as IssueBoardConfig}
+          userId={userId}
         />
       )}
 
