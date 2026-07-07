@@ -1349,6 +1349,8 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       task_issues: [],
     };
 
+    const capturedTarget = addTarget;
+
     // 로컬 즉시 반영
     setTasks((prev) => {
       const next = [...prev, newTask];
@@ -1358,15 +1360,28 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     setAddTarget(null);
     setAddValue('');
 
-    // 백그라운드로 Supabase 동기화 시도
-    supabase.from('tasks').insert({
-      id: newTask.id, title, status: 'todo', type: 'task', mode: mode,
-      parent_id: addTarget.parentId,
-      product: addTarget.rawProduct,
-      milestone: addTarget.rawMilestone,
+    // Supabase 동기화 (id 없이 → UUID 자동 생성)
+    const { data } = await supabase.from('tasks').insert({
+      title, status: 'todo', type: 'task', mode: mode,
+      parent_id: capturedTarget.parentId,
+      product: capturedTarget.rawProduct,
+      milestone: capturedTarget.rawMilestone,
       checklist: [],
       user_id: userId ?? null,
-    });
+    }).select().single();
+
+    if (data) {
+      // 임시 ID → 실제 UUID 교체
+      setTasks((prev) => {
+        const next = prev.map((t) =>
+          t.id === newTask.id
+            ? { ...t, id: data.id, created_at: data.created_at, updated_at: data.updated_at }
+            : t
+        );
+        AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
+        return next;
+      });
+    }
   };
 
   // Delete
@@ -1807,9 +1822,10 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       <AddSectionModal
         visible={showAddSection}
         onClose={() => setShowAddSection(false)}
-        onAdd={(product, milestone, title) => {
+        onAdd={async (product, milestone, title) => {
+          const tempId = uid();
           const newTask: Task = {
-            id: uid(), mode: mode, title, status: 'todo', type: 'task',
+            id: tempId, mode: mode, title, status: 'todo', type: 'task',
             product, milestone, parent_id: null,
             note: null, business: null, priority: null,
             start_date: null, due_date: null, end_date: null,
@@ -1821,10 +1837,19 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
             AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
             return next;
           });
-          supabase.from('tasks').insert({
-            id: newTask.id, title, status: 'todo', type: 'task', mode: mode,
+          const { data } = await supabase.from('tasks').insert({
+            title, status: 'todo', type: 'task', mode: mode,
             product, milestone, checklist: [], user_id: userId ?? null,
-          });
+          }).select().single();
+          if (data) {
+            setTasks((prev) => {
+              const next = prev.map((t) =>
+                t.id === tempId ? { ...t, id: data.id, created_at: data.created_at, updated_at: data.updated_at } : t
+              );
+              AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
+              return next;
+            });
+          }
         }}
         C={C}
         defaultMilestone={addSectionMilestone}
@@ -1911,14 +1936,12 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
             tasks={tasks}
             onLinkIssue={async (taskId, repo, num) => { await commitIssue(taskId, repo, num); }}
             onCreateTask={async (title, product, milestone, repo, issueNum) => {
-              const newTask: Task = {
-                id: uid(), mode: mode, title, status: 'todo', type: 'task',
+              const { data } = await supabase.from('tasks').insert({
+                mode, title, status: 'todo', type: 'task',
                 product, milestone, parent_id: null, note: null, business: null,
                 priority: null, start_date: null, due_date: null, end_date: null,
-                checklist: [], created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(), user_id: userId ?? null, task_issues: [],
-              };
-              const { data } = await supabase.from('tasks').insert({ ...newTask, task_issues: undefined }).select().single();
+                checklist: [], user_id: userId ?? null,
+              }).select().single();
               if (data) {
                 await supabase.from('task_issues').insert({ task_id: data.id, github_repo: repo, github_issue_number: issueNum });
                 const withIssue = { ...data, task_issues: [{ id: uid(), task_id: data.id, github_repo: repo, github_issue_number: issueNum, created_at: new Date().toISOString() }] };
