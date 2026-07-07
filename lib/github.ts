@@ -8,7 +8,7 @@ export const PINNED_REPOS = [
 ];
 
 const TOKEN_KEY = 'github_token';
-const DEFAULT_TOKEN = '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';
+const DEFAULT_TOKEN = process.env.EXPO_PUBLIC_GH_TOKEN ?? '';
 
 export async function getToken(): Promise<string | null> {
   const stored = await AsyncStorage.getItem(TOKEN_KEY);
