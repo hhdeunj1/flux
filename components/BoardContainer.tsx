@@ -236,6 +236,7 @@ export function BoardContainer({ isLight, onToggleLight, userId, username, onSwi
       {/* 보드 본문 */}
       {selBoard?.type === 'task' && (
         <WorkspaceView
+          key={selBoardId}
           isLight={isLight}
           onSwitchMode={onSwitchMode}
           onToggleLight={onToggleLight}
