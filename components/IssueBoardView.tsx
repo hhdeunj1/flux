@@ -12,11 +12,12 @@ type Props = {
   C: ThemeColors;
   config: IssueBoardConfig;
   userId: string;
+  myUsername?: string;
 };
 
 type Section = { product: string; issues: GitHubIssueDetail[] };
 
-export function IssueBoardView({ C, config, userId }: Props) {
+export function IssueBoardView({ C, config, userId, myUsername }: Props) {
   const { products, milestones } = config;
   const [selMilestone, setSelMilestone] = useState(milestones[0] ?? '');
   const [sections, setSections] = useState<Section[]>([]);
@@ -102,6 +103,38 @@ export function IssueBoardView({ C, config, userId }: Props) {
     setTaskSearch('');
   };
 
+  const [bulkLoading, setBulkLoading] = useState<string | null>(null); // product key
+
+  const handleBulkImport = async (product: string, issues: GitHubIssueDetail[]) => {
+    if (!myUsername) return;
+    const mine = issues.filter((i) => i.assignees.includes(myUsername));
+    if (mine.length === 0) return;
+    setBulkLoading(product);
+    for (const issue of mine) {
+      const { data: newTask } = await supabase
+        .from('tasks')
+        .insert({
+          title: issue.title,
+          status: 'todo',
+          type: 'task',
+          mode: 'work2',
+          user_id: userId,
+          milestone: selMilestone,
+        })
+        .select('*')
+        .single();
+      if (newTask) {
+        await supabase.from('task_issues').insert({
+          task_id: newTask.id,
+          github_repo: issue.repo,
+          github_issue_number: issue.number,
+        });
+        setTasks((prev) => [newTask, ...prev]);
+      }
+    }
+    setBulkLoading(null);
+  };
+
   const filteredTasks = tasks.filter(
     (t) => !taskSearch || t.title.toLowerCase().includes(taskSearch.toLowerCase())
   );
@@ -145,6 +178,26 @@ export function IssueBoardView({ C, config, userId }: Props) {
             <View style={s.sectionHeader}>
               <Text style={s.sectionTitle}>{sec.product}</Text>
               <Text style={s.sectionCount}>{sec.issues.length}</Text>
+              {myUsername && (() => {
+                const myCount = sec.issues.filter((i) => i.assignees.includes(myUsername)).length;
+                if (myCount === 0) return null;
+                const isLoading = bulkLoading === sec.product;
+                return (
+                  <TouchableOpacity
+                    style={s.bulkBtn}
+                    onPress={() => handleBulkImport(sec.product, sec.issues)}
+                    disabled={isLoading}
+                  >
+                    {isLoading
+                      ? <ActivityIndicator size="small" color="#30D158" />
+                      : <>
+                          <Ionicons name="person-circle" size={12} color="#30D158" />
+                          <Text style={s.bulkBtnText}>내 이슈 {myCount}개 가져오기</Text>
+                        </>
+                    }
+                  </TouchableOpacity>
+                );
+              })()}
             </View>
 
             {/* 이슈 행 */}
@@ -276,6 +329,13 @@ const styles = (C: ThemeColors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border,
   },
   sectionTitle: { fontSize: 13, fontWeight: '600', color: C.text2, flex: 1 },
+  bulkBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 9, paddingVertical: 4, borderRadius: 6,
+    backgroundColor: '#30D15820', borderWidth: StyleSheet.hairlineWidth, borderColor: '#30D15866',
+    minWidth: 32, justifyContent: 'center',
+  },
+  bulkBtnText: { fontSize: 11, color: '#30D158', fontWeight: '600' },
   sectionCount: {
     fontSize: 11, color: C.text3,
     backgroundColor: C.bg3, paddingHorizontal: 7, paddingVertical: 2,
