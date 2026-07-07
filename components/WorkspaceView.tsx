@@ -1141,16 +1141,26 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     if (cachedTasks.length > 0) setTasks(cachedTasks);
     const { data: taskData, error: taskError } = await supabase
       .from('tasks')
-      .select('*, task_issues(*)')
+      .select('*')
       .eq('mode', 'work2')
       .eq('user_id', userId ?? null)
       .order('created_at', { ascending: true });
     if (taskError || !taskData) return;
     if (taskData.length === 0 && cachedTasks.length > 0) return;
+    const taskIds = taskData.map((t) => t.id);
+    const { data: issueData } = await supabase
+      .from('task_issues')
+      .select('*')
+      .in('task_id', taskIds);
+    const issuesByTaskId: Record<string, TaskIssue[]> = {};
+    (issueData ?? []).forEach((issue) => {
+      if (!issuesByTaskId[issue.task_id]) issuesByTaskId[issue.task_id] = [];
+      issuesByTaskId[issue.task_id].push(issue);
+    });
     const supabaseById = new Map(taskData.map((t) => [t.id, t]));
     const merged = taskData.map((task) => ({
       ...task,
-      task_issues: (task as any).task_issues ?? [],
+      task_issues: issuesByTaskId[task.id] ?? [],
     }));
     const localOnly = cachedTasks.filter((t) => !supabaseById.has(t.id));
     const final = [...merged, ...localOnly];
