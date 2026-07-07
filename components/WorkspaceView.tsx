@@ -6,8 +6,9 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
-import { supabase, Task } from '../lib/supabase';
+import { supabase, Task, TaskIssue } from '../lib/supabase';
 import { issueUrl, fetchRepoIssues, searchIssues, GitHubIssue } from '../lib/github';
+import { IssueBrowser } from './IssueBrowser';
 import {
   ThemeColors, DARK_C, LIGHT_C,
   PRODUCTS, MILESTONES, PRODUCT_DOT, PRODUCT_EMOJI, PRODUCT_SHORT, MILESTONE_DOT,
@@ -961,6 +962,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
   const [addSectionMilestone, setAddSectionMilestone] = useState<string | null>(null);
 
   const [showFilterPanel, setShowFilterPanel] = useState(true);
+  const [showIssueBrowser, setShowIssueBrowser] = useState(false);
   const [sectionOrders, setSectionOrders] = useState<Record<string, string[]>>({});
   const [flagFilter, setFlagFilter] = useState<'today' | 'tomorrow' | null>(null);
 
@@ -1458,6 +1460,13 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
           <Ionicons name="log-out-outline" size={16} color={C.text3} />
         </TouchableOpacity>
         <TouchableOpacity
+          onPress={() => setShowIssueBrowser(true)}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 7, backgroundColor: '#5E5CE622', borderWidth: StyleSheet.hairlineWidth, borderColor: '#5E5CE688' }}
+        >
+          <Ionicons name="logo-github" size={13} color="#5E5CE6" />
+          <Text style={{ fontSize: 12, color: '#5E5CE6', fontWeight: '600' }}>이슈</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           onPress={() => { setAddSectionMilestone(null); setShowAddSection(true); }}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 7, backgroundColor: '#007AFF' }}
         >
@@ -1811,6 +1820,39 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
           onClose={() => setLinkState(null)}
           onConfirm={commitLink}
         />
+      )}
+
+      {/* ── Issue Browser ── */}
+      {showIssueBrowser && (
+        <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowIssueBrowser(false)}>
+          <IssueBrowser
+            C={C}
+            milestones={[...MILESTONES, 'v4.13', 'v4.14', 'v4.15'].filter((v, i, a) => a.indexOf(v) === i)}
+            defaultMilestone={MILESTONES[0]}
+            tasks={tasks}
+            onLinkIssue={async (taskId, repo, num) => { await commitIssue(taskId, repo, num); }}
+            onCreateTask={async (title, product, milestone, repo, issueNum) => {
+              const newTask: Task = {
+                id: uid(), mode: 'work2', title, status: 'todo', type: 'task',
+                product, milestone, parent_id: null, note: null, business: null,
+                priority: null, start_date: null, due_date: null, end_date: null,
+                checklist: [], created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(), user_id: userId ?? null, task_issues: [],
+              };
+              const { data } = await supabase.from('tasks').insert({ ...newTask, task_issues: undefined }).select().single();
+              if (data) {
+                await supabase.from('task_issues').insert({ task_id: data.id, github_repo: repo, github_issue_number: issueNum });
+                const withIssue = { ...data, task_issues: [{ id: uid(), task_id: data.id, github_repo: repo, github_issue_number: issueNum, created_at: new Date().toISOString() }] };
+                setTasks((prev) => {
+                  const next = [...prev, withIssue];
+                  AsyncStorage.setItem('flux_tasks_cache_work2_v2', JSON.stringify(next));
+                  return next;
+                });
+              }
+            }}
+            onClose={() => setShowIssueBrowser(false)}
+          />
+        </Modal>
       )}
     </View>
   );

@@ -87,6 +87,68 @@ export async function fetchRepoIssues(repo: string, page = 1): Promise<GitHubIss
   return data.filter((i) => !i.pull_request).map((i) => ({ number: i.number, title: i.title, state: i.state, created_at: i.created_at as string }));
 }
 
+export const PRODUCT_REPO_MAP: Record<string, string> = {
+  '라이더앱': 'hkmc-airlab/shucle-rider',
+  '택시기사앱': 'hkmc-airlab/shucle-taxidriver-product',
+  '드라이버앱': 'hkmc-airlab/shucle-DriverVehicle-product',
+  '키오스크': 'hkmc-airlab/shucle-kiosk-product',
+  '기준': 'hhdeunj1/2026',
+};
+
+export type GitHubIssueDetail = {
+  number: number;
+  title: string;
+  state: string;
+  repo: string;
+  html_url: string;
+  milestone_title: string | null;
+  created_at: string;
+};
+
+async function getHeaders(): Promise<Record<string, string>> {
+  const token = await getToken();
+  const headers: Record<string, string> = { Accept: 'application/vnd.github+json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
+export async function fetchMilestoneNumber(repo: string, milestoneTitle: string): Promise<number | null> {
+  const headers = await getHeaders();
+  const [owner, repoName] = repo.split('/');
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repoName}/milestones?state=all&per_page=50`,
+    { headers }
+  );
+  if (!res.ok) return null;
+  const data: any[] = await res.json();
+  const found = data.find((m) => m.title === milestoneTitle);
+  return found?.number ?? null;
+}
+
+export async function fetchIssuesByMilestone(repo: string, milestoneTitle: string): Promise<GitHubIssueDetail[]> {
+  const headers = await getHeaders();
+  const [owner, repoName] = repo.split('/');
+  const milestoneNumber = await fetchMilestoneNumber(repo, milestoneTitle);
+  if (milestoneNumber === null) return [];
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repoName}/issues?milestone=${milestoneNumber}&state=open&per_page=100`,
+    { headers }
+  );
+  if (!res.ok) return [];
+  const data: any[] = await res.json();
+  return data
+    .filter((i) => !i.pull_request)
+    .map((i) => ({
+      number: i.number,
+      title: i.title,
+      state: i.state,
+      repo,
+      html_url: i.html_url as string,
+      milestone_title: i.milestone?.title ?? null,
+      created_at: i.created_at as string,
+    }));
+}
+
 export async function createIssue(repo: string, title: string, body: string): Promise<number> {
   const token = await getToken();
   const headers: Record<string, string> = {
