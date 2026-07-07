@@ -7,7 +7,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import { supabase, Task, TaskIssue } from '../lib/supabase';
-import { issueUrl, fetchRepoIssues, searchIssues, GitHubIssue } from '../lib/github';
+import { issueUrl, fetchRepoIssues, searchIssues, GitHubIssue, PRODUCT_REPO_MAP } from '../lib/github';
+
+const REPO_TO_PRODUCT: Record<string, string> = Object.entries(PRODUCT_REPO_MAP).reduce(
+  (acc, [product, repo]) => ({ ...acc, [repo]: product }),
+  {} as Record<string, string>
+);
 import { IssueBrowser } from './IssueBrowser';
 import {
   ThemeColors, DARK_C, LIGHT_C,
@@ -1161,6 +1166,23 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       if (!issuesByTaskId[issue.task_id]) issuesByTaskId[issue.task_id] = [];
       issuesByTaskId[issue.task_id].push(issue);
     });
+    // product가 null이거나 '기타'인데 task_issues가 있으면 repo로 자동 수정
+    const toFix = taskData.filter(
+      (t) => (!t.product || t.product === '기타') && (issuesByTaskId[t.id]?.length ?? 0) > 0
+    );
+    if (toFix.length > 0) {
+      await Promise.all(
+        toFix.map(async (task) => {
+          const repo = issuesByTaskId[task.id][0].github_repo;
+          const correctProduct = REPO_TO_PRODUCT[repo];
+          if (correctProduct) {
+            task.product = correctProduct;
+            await supabase.from('tasks').update({ product: correctProduct }).eq('id', task.id);
+          }
+        })
+      );
+    }
+
     const supabaseById = new Map(taskData.map((t) => [t.id, t]));
     const merged = taskData.map((task) => ({
       ...task,
@@ -1460,6 +1482,25 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
         </TouchableOpacity>
         <TouchableOpacity onPress={() => supabase.auth.signOut()} style={{ padding: 4 }}>
           <Ionicons name="log-out-outline" size={16} color={C.text3} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            if (Platform.OS === 'web') {
+              const date = new Date().toISOString().slice(0, 10);
+              const json = JSON.stringify(tasks, null, 2);
+              const blob = new Blob([json], { type: 'application/json' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `flux_backup_${date}.json`;
+              a.click();
+              URL.revokeObjectURL(url);
+            }
+          }}
+          style={{ padding: 4 }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+        >
+          <Ionicons name="download-outline" size={16} color={C.text3} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setShowIssueBrowser(true)}

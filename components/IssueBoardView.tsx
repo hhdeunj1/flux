@@ -8,6 +8,11 @@ import { ThemeColors } from '../lib/constants';
 import { supabase, IssueBoardConfig, Task, TaskIssue } from '../lib/supabase';
 import { PRODUCT_REPO_MAP, fetchIssuesByMilestone, GitHubIssueDetail } from '../lib/github';
 
+const REPO_PRODUCT: Record<string, string> = Object.entries(PRODUCT_REPO_MAP).reduce(
+  (acc, [product, repo]) => ({ ...acc, [repo]: product }),
+  {} as Record<string, string>
+);
+
 type Props = {
   C: ThemeColors;
   config: IssueBoardConfig;
@@ -84,6 +89,7 @@ export function IssueBoardView({ C, config, userId, myUsername }: Props) {
         mode: 'work2',
         user_id: userId,
         milestone: selMilestone,
+        product: REPO_PRODUCT[linkingIssue.repo] ?? '기타',
       })
       .select('*')
       .single();
@@ -117,6 +123,7 @@ export function IssueBoardView({ C, config, userId, myUsername }: Props) {
           mode: 'work2',
           user_id: userId,
           milestone: selMilestone,
+          product: REPO_PRODUCT[issue.repo] ?? '기타',
         })
         .select('*')
         .single();
@@ -149,6 +156,7 @@ export function IssueBoardView({ C, config, userId, myUsername }: Props) {
           mode: 'work2',
           user_id: userId,
           milestone: selMilestone,
+          product: REPO_PRODUCT[issue.repo] ?? '기타',
         })
         .select('*')
         .single();
