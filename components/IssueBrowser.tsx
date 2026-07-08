@@ -18,6 +18,8 @@ const REPO_SHORT: Record<string, string> = {
   'hhdeunj1/2026': '기준',
 };
 
+type FolderIssue = { title: string; product: string; repo: string; issueNum: number };
+
 type Props = {
   C: ThemeColors;
   milestones: string[];
@@ -26,6 +28,7 @@ type Props = {
   myUsername?: string;
   onLinkIssue: (taskId: string, repo: string, num: number) => Promise<void>;
   onCreateTask: (title: string, product: string, milestone: string, repo: string, issueNum: number) => Promise<void>;
+  onCreateFolder: (folderTitle: string, issues: FolderIssue[], milestone: string) => Promise<void>;
   onClose: () => void;
 };
 
@@ -33,7 +36,7 @@ type IssueGroup = { repo: string; product: string; issues: GitHubIssueDetail[] }
 
 function issueKey(repo: string, num: number) { return `${repo}:${num}`; }
 
-export function IssueBrowser({ C, milestones, defaultMilestone, tasks, myUsername, onLinkIssue, onCreateTask, onClose }: Props) {
+export function IssueBrowser({ C, milestones, defaultMilestone, tasks, myUsername, onLinkIssue, onCreateTask, onCreateFolder, onClose }: Props) {
   const [selMilestone, setSelMilestone] = useState(defaultMilestone ?? milestones[0] ?? '');
   const [selProducts, setSelProducts] = useState<string[]>(BROWSER_PRODUCTS);
   const [groups, setGroups] = useState<IssueGroup[]>([]);
@@ -49,6 +52,10 @@ export function IssueBrowser({ C, milestones, defaultMilestone, tasks, myUsernam
   // 다중 선택
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+
+  // 폴더 묶기
+  const [folderMode, setFolderMode] = useState(false);
+  const [folderName, setFolderName] = useState('');
 
   const toggleProduct = (p: string) =>
     setSelProducts((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
@@ -126,6 +133,35 @@ export function IssueBrowser({ C, milestones, defaultMilestone, tasks, myUsernam
     } finally {
       setLinkLoading(false);
     }
+  };
+
+  const enterFolderMode = () => {
+    const targets = allIssues.filter((i) => selected.has(issueKey(i.repo, i.number)));
+    const products = [...new Set(targets.map((i) => REPO_SHORT[i.repo] ?? i.repo))];
+    const defaultName = products.length === 1
+      ? `${products[0]} ${selMilestone} 기획`
+      : `${selMilestone} 기획`;
+    setFolderName(defaultName);
+    setFolderMode(true);
+  };
+
+  const handleBulkCreateFolder = async () => {
+    const targets = allIssues.filter((i) => selected.has(issueKey(i.repo, i.number)));
+    if (targets.length === 0 || !folderName.trim()) return;
+    setBulkProgress({ done: 0, total: targets.length });
+    const issues: FolderIssue[] = targets.map((i) => ({
+      title: i.title,
+      product: REPO_SHORT[i.repo] ?? '기타',
+      repo: i.repo,
+      issueNum: i.number,
+    }));
+    try {
+      await onCreateFolder(folderName.trim(), issues, selMilestone);
+    } catch {}
+    setBulkProgress(null);
+    setSelected(new Set());
+    setFolderMode(false);
+    setFolderName('');
   };
 
   const handleBulkCreate = async () => {
@@ -296,32 +332,71 @@ export function IssueBrowser({ C, milestones, defaultMilestone, tasks, myUsernam
       {/* 다중 선택 하단 바 */}
       {selected.size > 0 && (
         <View style={s.bulkBar}>
-          <View style={{ flex: 1 }}>
-            {bulkProgress ? (
-              <Text style={s.bulkBarText}>
-                생성 중 {bulkProgress.done}/{bulkProgress.total}...
-              </Text>
-            ) : (
-              <Text style={s.bulkBarText}>{selected.size}개 선택됨</Text>
-            )}
-          </View>
-          <TouchableOpacity
-            style={s.bulkClearBtn}
-            onPress={() => setSelected(new Set())}
-            disabled={!!bulkProgress}
-          >
-            <Text style={{ fontSize: 13, color: C.text3 }}>취소</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.bulkCreateBtn, !!bulkProgress && { opacity: 0.5 }]}
-            onPress={handleBulkCreate}
-            disabled={!!bulkProgress}
-          >
-            {bulkProgress
-              ? <ActivityIndicator size="small" color="#fff" />
-              : <Text style={s.bulkCreateBtnText}>새 태스크로 생성</Text>
-            }
-          </TouchableOpacity>
+          {folderMode ? (
+            // 폴더 모드: 이름 입력 + 생성
+            <>
+              <TextInput
+                style={[s.folderNameInput, { backgroundColor: C.input, color: C.text, borderColor: '#0A84FF88' }]}
+                value={folderName}
+                onChangeText={setFolderName}
+                placeholder="폴더명 입력..."
+                placeholderTextColor={C.text3}
+                autoFocus
+              />
+              <TouchableOpacity
+                style={s.bulkClearBtn}
+                onPress={() => setFolderMode(false)}
+                disabled={!!bulkProgress}
+              >
+                <Text style={{ fontSize: 13, color: C.text3 }}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.bulkFolderBtn, (!folderName.trim() || !!bulkProgress) && { opacity: 0.5 }]}
+                onPress={handleBulkCreateFolder}
+                disabled={!folderName.trim() || !!bulkProgress}
+              >
+                {bulkProgress
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={s.bulkCreateBtnText}>폴더 생성</Text>
+                }
+              </TouchableOpacity>
+            </>
+          ) : (
+            // 기본 모드: 선택 개수 + 두 버튼
+            <>
+              <View style={{ flex: 1 }}>
+                {bulkProgress ? (
+                  <Text style={s.bulkBarText}>생성 중 {bulkProgress.done}/{bulkProgress.total}...</Text>
+                ) : (
+                  <Text style={s.bulkBarText}>{selected.size}개 선택됨</Text>
+                )}
+              </View>
+              <TouchableOpacity
+                style={s.bulkClearBtn}
+                onPress={() => setSelected(new Set())}
+                disabled={!!bulkProgress}
+              >
+                <Text style={{ fontSize: 13, color: C.text3 }}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.bulkFolderBtn, !!bulkProgress && { opacity: 0.5 }]}
+                onPress={enterFolderMode}
+                disabled={!!bulkProgress}
+              >
+                <Text style={s.bulkCreateBtnText}>📁 폴더로 묶기</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.bulkCreateBtn, !!bulkProgress && { opacity: 0.5 }]}
+                onPress={handleBulkCreate}
+                disabled={!!bulkProgress}
+              >
+                {bulkProgress
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={s.bulkCreateBtnText}>개별 생성</Text>
+                }
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       )}
 
@@ -491,9 +566,17 @@ const styles = (C: ThemeColors) => StyleSheet.create({
   bulkClearBtn: { paddingHorizontal: 10, paddingVertical: 8 },
   bulkCreateBtn: {
     backgroundColor: '#0A84FF', borderRadius: 8,
-    paddingHorizontal: 16, paddingVertical: 8,
+    paddingHorizontal: 14, paddingVertical: 8,
+  },
+  bulkFolderBtn: {
+    backgroundColor: '#5E5CE6', borderRadius: 8,
+    paddingHorizontal: 14, paddingVertical: 8,
   },
   bulkCreateBtnText: { color: '#fff', fontWeight: '600', fontSize: 13 },
+  folderNameInput: {
+    flex: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7,
+    fontSize: 13, borderWidth: 1.5, marginRight: 4,
+  },
   // Modal
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },
   picker: { borderRadius: 12, padding: 16, maxHeight: 520 },

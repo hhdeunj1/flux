@@ -1979,6 +1979,41 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
                 });
               }
             }}
+            onCreateFolder={async (folderTitle, issues, milestone) => {
+              const products = [...new Set(issues.map((i) => i.product))];
+              const product = products.length === 1 ? products[0] : null;
+              // 1. 부모(폴더) task 생성
+              const { data: parent } = await supabase.from('tasks').insert({
+                mode, title: folderTitle, status: 'todo', type: 'task',
+                product, milestone, parent_id: null, note: null, business: null,
+                priority: null, start_date: null, due_date: null, end_date: null,
+                checklist: [], user_id: userId ?? null,
+              }).select().single();
+              if (!parent) return;
+              const newTasks: Task[] = [{ ...parent, task_issues: [] }];
+              // 2. 자식 tasks + 이슈 연결
+              for (const issue of issues) {
+                const { data: child } = await supabase.from('tasks').insert({
+                  mode, title: issue.title, status: 'todo', type: 'task',
+                  product: issue.product, milestone, parent_id: parent.id,
+                  note: null, business: null, priority: null,
+                  start_date: null, due_date: null, end_date: null,
+                  checklist: [], user_id: userId ?? null,
+                }).select().single();
+                if (child) {
+                  const { data: issueRow } = await supabase
+                    .from('task_issues')
+                    .insert({ task_id: child.id, github_repo: issue.repo, github_issue_number: issue.issueNum })
+                    .select().single();
+                  newTasks.push({ ...child, task_issues: issueRow ? [issueRow] : [] });
+                }
+              }
+              setTasks((prev) => {
+                const next = [...prev, ...newTasks];
+                AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
+                return next;
+              });
+            }}
             onClose={() => setShowIssueBrowser(false)}
           />
         </Modal>
