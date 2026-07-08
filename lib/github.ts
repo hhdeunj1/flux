@@ -5,6 +5,7 @@ export const PINNED_REPOS = [
   'hkmc-airlab/shucle-taxidriver-product',
   'hkmc-airlab/shucle-DriverVehicle-product',
   'hkmc-airlab/shucle-rider',
+  'hkmc-airlab/shucle-ux',
 ];
 
 const TOKEN_KEY = 'github_token';
@@ -92,6 +93,7 @@ export const PRODUCT_REPO_MAP: Record<string, string> = {
   '택시기사앱': 'hkmc-airlab/shucle-taxidriver-product',
   '드라이버앱': 'hkmc-airlab/shucle-DriverVehicle-product',
   '키오스크': 'hkmc-airlab/shucle-kiosk-product',
+  '서비스UX': 'hkmc-airlab/shucle-ux',
   '기준': 'hhdeunj1/2026',
 };
 

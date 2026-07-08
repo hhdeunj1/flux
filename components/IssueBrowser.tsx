@@ -8,12 +8,13 @@ import { ThemeColors } from '../lib/constants';
 import { Task } from '../lib/supabase';
 import { PRODUCT_REPO_MAP, fetchIssuesByMilestone, GitHubIssueDetail } from '../lib/github';
 
-const BROWSER_PRODUCTS = ['라이더앱', '택시기사앱', '드라이버앱', '키오스크'];
+const BROWSER_PRODUCTS = ['라이더앱', '택시기사앱', '드라이버앱', '키오스크', '서비스UX'];
 const REPO_SHORT: Record<string, string> = {
   'hkmc-airlab/shucle-rider': '라이더앱',
   'hkmc-airlab/shucle-taxidriver-product': '택시기사앱',
   'hkmc-airlab/shucle-DriverVehicle-product': '드라이버앱',
   'hkmc-airlab/shucle-kiosk-product': '키오스크',
+  'hkmc-airlab/shucle-ux': '서비스UX',
   'hhdeunj1/2026': '기준',
 };
 
