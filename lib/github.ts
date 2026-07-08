@@ -131,7 +131,8 @@ export async function fetchMilestoneNumber(repo: string, milestoneTitle: string)
     const found = data.find((m) =>
       m.title === milestoneTitle ||
       m.title === normalized ||
-      m.title === `v${normalized}`
+      m.title === `v${normalized}` ||
+      m.title === `${normalized}.0`
     );
     if (found) return found.number;
     if (data.length < 100) break; // 마지막 페이지
