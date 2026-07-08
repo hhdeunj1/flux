@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput, ScrollView,
-  StyleSheet, Linking, Modal, Pressable, Platform,
+  StyleSheet, Linking, Modal, Pressable, Platform, ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -971,6 +971,12 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
   const [showFilterPanel, setShowFilterPanel] = useState(true);
   const [showIssueBrowser, setShowIssueBrowser] = useState(false);
   const [sectionOrders, setSectionOrders] = useState<Record<string, string[]>>({});
+
+  // 보드 다중 선택 → 폴더 묶기
+  const [folderSelectMode, setFolderSelectMode] = useState(false);
+  const [boardSelected, setBoardSelected] = useState<Set<string>>(new Set());
+  const [folderBarName, setFolderBarName] = useState('');
+  const [folderBarCreating, setFolderBarCreating] = useState(false);
   const [flagFilter, setFlagFilter] = useState<'today' | 'tomorrow' | null>(null);
 
   // 웹 스크롤바 전역 숨김
@@ -1446,8 +1452,36 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     const doneCount = children.filter((c) => c.status === 'done').length;
     const isAddingHere = addTarget?.parentId === task.id;
 
+    const isBoardSelected = folderSelectMode && boardSelected.has(task.id);
+
     return (
       <View key={task.id}>
+        {folderSelectMode && (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => setBoardSelected((prev) => {
+              const next = new Set(prev);
+              next.has(task.id) ? next.delete(task.id) : next.add(task.id);
+              return next;
+            })}
+            style={{
+              position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
+              zIndex: 10, flexDirection: 'row', alignItems: 'center',
+              paddingLeft: 8,
+              backgroundColor: isBoardSelected ? 'rgba(94,92,230,0.12)' : 'transparent',
+            }}
+          >
+            <View style={{
+              width: 20, height: 20, borderRadius: 10,
+              borderWidth: 1.5,
+              borderColor: isBoardSelected ? '#5E5CE6' : 'rgba(142,142,147,0.5)',
+              backgroundColor: isBoardSelected ? '#5E5CE6' : 'transparent',
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              {isBoardSelected && <Ionicons name="checkmark" size={12} color="#fff" />}
+            </View>
+          </TouchableOpacity>
+        )}
         <OutlineRow
           task={task}
           depth={depth}
@@ -1574,6 +1608,22 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
           hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         >
           <Ionicons name="download-outline" size={16} color={C.text3} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            if (folderSelectMode) {
+              setFolderSelectMode(false);
+              setBoardSelected(new Set());
+              setFolderBarName('');
+            } else {
+              setFolderSelectMode(true);
+              setBoardSelected(new Set());
+            }
+          }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 7, backgroundColor: folderSelectMode ? '#5E5CE6' : '#5E5CE622', borderWidth: StyleSheet.hairlineWidth, borderColor: '#5E5CE688' }}
+        >
+          <Ionicons name="folder-outline" size={13} color={folderSelectMode ? '#fff' : '#5E5CE6'} />
+          <Text style={{ fontSize: 12, color: folderSelectMode ? '#fff' : '#5E5CE6', fontWeight: '600' }}>묶기</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setShowIssueBrowser(true)}
@@ -2017,6 +2067,82 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
             onClose={() => setShowIssueBrowser(false)}
           />
         </Modal>
+      )}
+
+      {/* ── 폴더 묶기 플로팅 바 ── */}
+      {folderSelectMode && boardSelected.size > 0 && (
+        <View style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0,
+          flexDirection: 'row', alignItems: 'center', gap: 8,
+          paddingHorizontal: 16, paddingVertical: 12,
+          backgroundColor: C.card,
+          borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border,
+          zIndex: 100,
+        }}>
+          <TextInput
+            style={{
+              flex: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8,
+              fontSize: 13, borderWidth: 1.5, borderColor: '#5E5CE688',
+              backgroundColor: C.input, color: C.text,
+            }}
+            value={folderBarName}
+            onChangeText={setFolderBarName}
+            placeholder={`폴더명 입력... (${boardSelected.size}개 선택됨)`}
+            placeholderTextColor={C.text3}
+          />
+          <TouchableOpacity
+            onPress={() => { setFolderSelectMode(false); setBoardSelected(new Set()); setFolderBarName(''); }}
+          >
+            <Text style={{ fontSize: 13, color: C.text3, paddingHorizontal: 8 }}>취소</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={async () => {
+              if (!folderBarName.trim() || folderBarCreating) return;
+              setFolderBarCreating(true);
+              const selectedTasks = tasks.filter((t) => boardSelected.has(t.id));
+              const products = [...new Set(selectedTasks.map((t) => t.product).filter(Boolean))];
+              const milestones = [...new Set(selectedTasks.map((t) => t.milestone).filter(Boolean))];
+              const product = products.length === 1 ? products[0] : null;
+              const milestone = milestones.length === 1 ? milestones[0] : (milestones[0] ?? null);
+              // 부모 task 생성
+              const { data: parent } = await supabase.from('tasks').insert({
+                mode, title: folderBarName.trim(), status: 'todo', type: 'task',
+                product, milestone, parent_id: null,
+                note: null, business: null, priority: null,
+                start_date: null, due_date: null, end_date: null,
+                checklist: [], user_id: userId ?? null,
+              }).select().single();
+              if (parent) {
+                // 선택한 태스크들의 parent_id 업데이트
+                const ids = [...boardSelected];
+                await supabase.from('tasks').update({ parent_id: parent.id }).in('id', ids);
+                setTasks((prev) => {
+                  const next = [
+                    { ...parent, task_issues: [] } as Task,
+                    ...prev.map((t) => boardSelected.has(t.id) ? { ...t, parent_id: parent.id } : t),
+                  ];
+                  AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
+                  return next;
+                });
+              }
+              setFolderBarCreating(false);
+              setFolderSelectMode(false);
+              setBoardSelected(new Set());
+              setFolderBarName('');
+            }}
+            style={{
+              backgroundColor: folderBarName.trim() ? '#5E5CE6' : C.bg3,
+              borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8,
+              opacity: folderBarCreating ? 0.5 : 1,
+            }}
+            disabled={!folderBarName.trim() || folderBarCreating}
+          >
+            {folderBarCreating
+              ? <ActivityIndicator size="small" color="#fff" />
+              : <Text style={{ fontSize: 13, color: folderBarName.trim() ? '#fff' : C.text3, fontWeight: '600' }}>폴더 생성</Text>
+            }
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
