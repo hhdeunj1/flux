@@ -1064,7 +1064,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     });
   };
 
-  // Load assignees
+  // Load assignees + section orders
   useEffect(() => {
     AsyncStorage.getItem(`${mode}_assignees`).then((v) => {
       if (v) setAssignees(JSON.parse(v));
@@ -1073,6 +1073,22 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       if (v) setSectionOrders(JSON.parse(v));
     });
   }, []);
+
+  // tasks가 로드된 후 각 부모 task의 자식 순서를 AsyncStorage에서 복원
+  useEffect(() => {
+    const parentIds = [...new Set(tasks.filter((t) => t.parent_id).map((t) => t.parent_id as string))];
+    if (parentIds.length === 0) return;
+    Promise.all(
+      parentIds.map((pid) =>
+        AsyncStorage.getItem(`child_order_${pid}`).then((v) => v ? [pid, JSON.parse(v) as string[]] as const : null)
+      )
+    ).then((entries) => {
+      const loaded = Object.fromEntries(entries.filter(Boolean) as [string, string[]][]);
+      if (Object.keys(loaded).length > 0) {
+        setChildOrders((prev) => ({ ...loaded, ...prev }));
+      }
+    });
+  }, [tasks.length]);
 
   const reparentTask = useCallback((childId: string, newParentId: string, newMilestone: string | null) => {
     const parent = tasks.find((t) => t.id === newParentId);
