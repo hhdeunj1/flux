@@ -529,6 +529,44 @@ const ReorderDiv = ({ taskId, sectionKey, onReorder, onAdoptChild, children }: {
   }, children);
 };
 
+const ChildReorderDiv = ({ taskId, parentId, onReorder, children }: {
+  taskId: string; parentId: string;
+  onReorder: (parentId: string, draggedId: string, targetId: string, before: boolean) => void;
+  children: React.ReactNode;
+}) => {
+  const [ind, setInd] = React.useState<'before'|'after'|null>(null);
+  return React.createElement('div', {
+    onDragOver: (e: React.DragEvent) => {
+      const depth = e.dataTransfer.types.includes('text/taskdepth')
+        ? null : null; // types 접근용
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+      setInd(e.clientY < rect.top + rect.height / 2 ? 'before' : 'after');
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node)) setInd(null);
+    },
+    onDrop: (e: React.DragEvent) => {
+      const draggedId = e.dataTransfer.getData('text/taskId');
+      const draggedParent = e.dataTransfer.getData('text/parentId');
+      setInd(null);
+      if (!draggedId || draggedId === taskId) return;
+      // 같은 부모의 자식끼리만 재정렬
+      if (draggedParent !== parentId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = e.currentTarget.getBoundingClientRect();
+      onReorder(parentId, draggedId, taskId, e.clientY < rect.top + rect.height / 2);
+    },
+    style: {
+      display: 'flex', flexDirection: 'column',
+      userSelect: 'none', WebkitUserSelect: 'none',
+      borderTop: ind === 'before' ? '2px solid rgba(0,122,255,0.8)' : '2px solid transparent',
+      borderBottom: ind === 'after' ? '2px solid rgba(0,122,255,0.8)' : '2px solid transparent',
+    },
+  }, children);
+};
+
 const ColumnScroll = ({ children }: { children: React.ReactNode }) =>
   React.createElement('div', {
     style: {
@@ -814,6 +852,7 @@ function OutlineRow({
             e.dataTransfer.setData('text/taskId', task.id);
             e.dataTransfer.setData('text/taskDepth', String(depth));
             if (taskSectionKey) e.dataTransfer.setData('text/sectionKey', taskSectionKey);
+            if (task.parent_id) e.dataTransfer.setData('text/parentId', task.parent_id);
             e.dataTransfer.effectAllowed = 'move';
           } : undefined,
           style: {
@@ -993,6 +1032,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
   const [showFilterPanel, setShowFilterPanel] = useState(true);
   const [showIssueBrowser, setShowIssueBrowser] = useState(false);
   const [sectionOrders, setSectionOrders] = useState<Record<string, string[]>>({});
+  const [childOrders, setChildOrders] = useState<Record<string, string[]>>({});
 
   // 보드 다중 선택 → 폴더 묶기
   const [folderSelectMode, setFolderSelectMode] = useState(false);
@@ -1086,6 +1126,27 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       return next;
     });
   }, []);
+
+  const handleChildReorder = useCallback((parentId: string, draggedId: string, targetId: string, before: boolean) => {
+    const order = childOrders[parentId] ?? [];
+    const siblings = tasks
+      .filter((t) => t.parent_id === parentId)
+      .sort((a, b) => {
+        const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
+        if (ai === -1 && bi === -1) return a.created_at.localeCompare(b.created_at);
+        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+      });
+    const ids = siblings.map((t) => t.id);
+    const from = ids.indexOf(draggedId);
+    if (from === -1) return;
+    ids.splice(from, 1);
+    let to = ids.indexOf(targetId);
+    if (to === -1) return;
+    if (!before) to++;
+    ids.splice(to, 0, draggedId);
+    setChildOrders((prev) => ({ ...prev, [parentId]: ids }));
+    AsyncStorage.setItem(`child_order_${parentId}`, JSON.stringify(ids));
+  }, [tasks, childOrders]);
 
   const handleReorder = useCallback((sectionKey: string, draggedId: string, targetId: string, before: boolean) => {
     const order = sectionOrders[sectionKey] ?? [];
@@ -1468,7 +1529,12 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
 
   // Recursive render
   const renderNode = (task: Task, depth: number, sectionKey?: string): React.ReactNode => {
-    const children = (childrenMap.get(task.id) ?? []).sort((a, b) => a.created_at.localeCompare(b.created_at));
+    const order = childOrders[task.id] ?? [];
+    const children = (childrenMap.get(task.id) ?? []).sort((a, b) => {
+      const ai = order.indexOf(a.id), bi = order.indexOf(b.id);
+      if (ai === -1 && bi === -1) return a.created_at.localeCompare(b.created_at);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    });
     const hasChildren = children.length > 0;
     const isExpanded = !collapsed.has(task.id);
     const doneCount = children.filter((c) => c.status === 'done').length;
@@ -1540,7 +1606,16 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
             return next;
           })}
         />
-        {isExpanded && children.map((child) => renderNode(child, depth + 1, sectionKey))}
+        {isExpanded && children.map((child) => (
+          <ChildReorderDiv
+            key={child.id}
+            taskId={child.id}
+            parentId={task.id}
+            onReorder={handleChildReorder}
+          >
+            {renderNode(child, depth + 1, sectionKey)}
+          </ChildReorderDiv>
+        ))}
         {isExpanded && isAddingHere && (
           <AddInput
             depth={depth + 1}
