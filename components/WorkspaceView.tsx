@@ -502,12 +502,15 @@ const ReorderDiv = ({ taskId, sectionKey, onReorder, onAdoptChild, children }: {
       if (!e.currentTarget.contains(e.relatedTarget as Node)) setInd(null);
     },
     onDrop: (e: React.DragEvent) => {
-      const draggedId = e.dataTransfer.getData('text/taskId');
-      const sourceSK  = e.dataTransfer.getData('text/sectionKey');
-      const depth     = e.dataTransfer.getData('text/taskDepth');
+      const draggedId      = e.dataTransfer.getData('text/taskId');
+      const sourceSK       = e.dataTransfer.getData('text/sectionKey');
+      const depth          = e.dataTransfer.getData('text/taskDepth');
+      const draggedParentId = e.dataTransfer.getData('text/parentId');
       setInd(null);
       if (!draggedId || draggedId === taskId) return;
       if (depth === '1') {
+        // 같은 부모의 자식이면 ChildReorderDiv가 처리 → 여기서 무시
+        if (draggedParentId === taskId) return;
         e.preventDefault();
         e.stopPropagation();
         onAdoptChild(draggedId, taskId);
@@ -1543,7 +1546,10 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     const isBoardSelected = folderSelectMode && boardSelected.has(task.id);
 
     return (
-      <View key={task.id} style={isBoardSelected ? { backgroundColor: 'rgba(94,92,230,0.10)' } : undefined}>
+      <View key={task.id} style={[
+        isBoardSelected ? { backgroundColor: 'rgba(94,92,230,0.10)' } : {},
+        Platform.OS === 'web' ? { userSelect: 'none' } as any : {},
+      ]}>
         <OutlineRow
           task={task}
           depth={depth}
