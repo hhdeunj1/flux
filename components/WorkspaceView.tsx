@@ -734,6 +734,9 @@ interface OutlineRowProps {
   onRemoveLink: (idx: number) => void;
   onAdd: () => void;
   onOpenMenu: (e: any) => void;
+  folderSelectMode?: boolean;
+  isBoardSelected?: boolean;
+  onToggleBoardSelect?: () => void;
 }
 
 function OutlineRow({
@@ -745,6 +748,7 @@ function OutlineRow({
   onStartEditNote, onChangeNote, onCommitNote, onCancelNote,
   onStartEditAssignee, onChangeAssignee, onCommitAssignee,
   taskSectionKey, links, onRemoveIssue, onRemoveLink, onAdd, onOpenMenu,
+  folderSelectMode, isBoardSelected, onToggleBoardSelect,
 }: OutlineRowProps) {
   const [rowHovered, setRowHovered] = useState(false);
   const isDone = task.status === 'done';
@@ -785,8 +789,24 @@ function OutlineRow({
       }}>
       {/* Main row */}
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        {/* Drag handle — 항상 같은 너비로 렌더(들여쓰기 일관성), depth>1은 invisible */}
-        {React.createElement('div', {
+        {/* Drag handle / 폴더 선택 체크박스 */}
+        {folderSelectMode ? (
+          <TouchableOpacity
+            onPress={onToggleBoardSelect}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={{ padding: '0 6px 0 0' } as any}
+          >
+            <View style={{
+              width: 18, height: 18, borderRadius: 9,
+              borderWidth: 1.5,
+              borderColor: isBoardSelected ? '#5E5CE6' : 'rgba(142,142,147,0.5)',
+              backgroundColor: isBoardSelected ? '#5E5CE6' : 'transparent',
+              alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+            }}>
+              {isBoardSelected && <Ionicons name="checkmark" size={11} color="#fff" />}
+            </View>
+          </TouchableOpacity>
+        ) : React.createElement('div', {
           draggable: depth <= 1,
           onDragStart: depth <= 1 ? (e: any) => {
             e.dataTransfer.setData('text/taskId', task.id);
@@ -1455,33 +1475,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
     const isBoardSelected = folderSelectMode && boardSelected.has(task.id);
 
     return (
-      <View key={task.id}>
-        {folderSelectMode && (
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => setBoardSelected((prev) => {
-              const next = new Set(prev);
-              next.has(task.id) ? next.delete(task.id) : next.add(task.id);
-              return next;
-            })}
-            style={{
-              position: 'absolute', top: 0, bottom: 0, left: 0, right: 0,
-              zIndex: 10, flexDirection: 'row', alignItems: 'center',
-              paddingLeft: 8,
-              backgroundColor: isBoardSelected ? 'rgba(94,92,230,0.12)' : 'transparent',
-            }}
-          >
-            <View style={{
-              width: 20, height: 20, borderRadius: 10,
-              borderWidth: 1.5,
-              borderColor: isBoardSelected ? '#5E5CE6' : 'rgba(142,142,147,0.5)',
-              backgroundColor: isBoardSelected ? '#5E5CE6' : 'transparent',
-              alignItems: 'center', justifyContent: 'center',
-            }}>
-              {isBoardSelected && <Ionicons name="checkmark" size={12} color="#fff" />}
-            </View>
-          </TouchableOpacity>
-        )}
+      <View key={task.id} style={isBoardSelected ? { backgroundColor: 'rgba(94,92,230,0.10)' } : undefined}>
         <OutlineRow
           task={task}
           depth={depth}
@@ -1536,6 +1530,13 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
             const py = e?.nativeEvent?.pageY ?? 200;
             setMenuState({ taskId: task.id, x: px, y: py });
           }}
+          folderSelectMode={folderSelectMode}
+          isBoardSelected={isBoardSelected}
+          onToggleBoardSelect={() => setBoardSelected((prev) => {
+            const next = new Set(prev);
+            next.has(task.id) ? next.delete(task.id) : next.add(task.id);
+            return next;
+          })}
         />
         {isExpanded && children.map((child) => renderNode(child, depth + 1, sectionKey))}
         {isExpanded && isAddingHere && (
