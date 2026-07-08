@@ -508,7 +508,6 @@ const ReorderDiv = ({ taskId, sectionKey, onReorder, onAdoptChild, children }: {
       setInd(null);
       if (!draggedId || draggedId === taskId) return;
       if (depth === '1') {
-        // 하위 태스크를 이 루트 태스크 아래로 바로 입양
         e.preventDefault();
         e.stopPropagation();
         onAdoptChild(draggedId, taskId);
@@ -523,6 +522,7 @@ const ReorderDiv = ({ taskId, sectionKey, onReorder, onAdoptChild, children }: {
     },
     style: {
       display: 'flex', flexDirection: 'column',
+      userSelect: 'none', WebkitUserSelect: 'none',
       borderTop: ind === 'before' ? '2px solid rgba(0,122,255,0.8)' : '2px solid transparent',
       borderBottom: ind === 'after' ? '2px solid rgba(0,122,255,0.8)' : '2px solid transparent',
     },
@@ -540,6 +540,8 @@ const ColumnScroll = ({ children }: { children: React.ReactNode }) =>
       paddingBottom: 60,
       scrollbarWidth: 'none',
       msOverflowStyle: 'none',
+      userSelect: 'none',
+      WebkitUserSelect: 'none',
     },
   }, children);
 
