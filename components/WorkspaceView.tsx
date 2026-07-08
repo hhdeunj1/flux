@@ -1956,6 +1956,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
             milestones={[...MILESTONES, 'v4.13', 'v4.14', 'v4.15'].filter((v, i, a) => a.indexOf(v) === i)}
             defaultMilestone={MILESTONES[0]}
             tasks={tasks}
+            myUsername={username}
             onLinkIssue={async (taskId, repo, num) => { await commitIssue(taskId, repo, num); }}
             onCreateTask={async (title, product, milestone, repo, issueNum) => {
               const { data } = await supabase.from('tasks').insert({
