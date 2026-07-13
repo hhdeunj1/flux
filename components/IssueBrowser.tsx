@@ -6,7 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { ThemeColors } from '../lib/constants';
 import { Task } from '../lib/supabase';
-import { PRODUCT_REPO_MAP, fetchIssuesByMilestone, GitHubIssueDetail } from '../lib/github';
+import { PRODUCT_REPO_MAP, fetchIssuesByMilestone, fetchIssuesWithoutMilestone, GitHubIssueDetail } from '../lib/github';
 
 const BROWSER_PRODUCTS = ['라이더앱', '택시기사앱', '드라이버앱', '키오스크', '서비스UX'];
 const REPO_SHORT: Record<string, string> = {
@@ -57,6 +57,19 @@ export function IssueBrowser({ C, milestones, defaultMilestone, tasks, myUsernam
   const [folderMode, setFolderMode] = useState(false);
   const [folderName, setFolderName] = useState('');
 
+  const sortedMilestones = [...milestones].sort((a, b) => {
+    if (a === 'TBD') return 1;
+    if (b === 'TBD') return -1;
+    if (a === 'ETC') return 1;
+    if (b === 'ETC') return -1;
+    const aVer = /^v?\d/.test(a);
+    const bVer = /^v?\d/.test(b);
+    if (aVer && bVer) return a.localeCompare(b, undefined, { numeric: true });
+    if (aVer) return -1;
+    if (bVer) return 1;
+    return a.localeCompare(b);
+  });
+
   const toggleProduct = (p: string) =>
     setSelProducts((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]);
 
@@ -79,7 +92,9 @@ export function IssueBrowser({ C, milestones, defaultMilestone, tasks, myUsernam
     try {
       const results = await Promise.all(
         repos.map(async (repo) => {
-          const issues = await fetchIssuesByMilestone(repo, selMilestone);
+          const issues = selMilestone === 'TBD'
+            ? await fetchIssuesWithoutMilestone(repo)
+            : await fetchIssuesByMilestone(repo, selMilestone);
           // 내 이슈 먼저 정렬
           const sorted = [...issues].sort((a, b) => {
             const aMe = myUsername ? a.assignees.includes(myUsername) : false;
@@ -139,8 +154,8 @@ export function IssueBrowser({ C, milestones, defaultMilestone, tasks, myUsernam
     const targets = allIssues.filter((i) => selected.has(issueKey(i.repo, i.number)));
     const products = [...new Set(targets.map((i) => REPO_SHORT[i.repo] ?? i.repo))];
     const defaultName = products.length === 1
-      ? `${products[0]} ${selMilestone} 기획`
-      : `${selMilestone} 기획`;
+      ? `${products[0]} ${selMilestone || '기타'} 기획`
+      : `${selMilestone || '기타'} 기획`;
     setFolderName(defaultName);
     setFolderMode(true);
   };
@@ -197,7 +212,7 @@ export function IssueBrowser({ C, milestones, defaultMilestone, tasks, myUsernam
         <Text style={s.label}>마일스톤</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
           <View style={{ flexDirection: 'row', gap: 6 }}>
-            {milestones.map((m) => (
+            {sortedMilestones.map((m) => (
               <TouchableOpacity
                 key={m}
                 onPress={() => setSelMilestone(m)}
@@ -244,7 +259,7 @@ export function IssueBrowser({ C, milestones, defaultMilestone, tasks, myUsernam
         )}
         {!fetchError && fetched && totalCount === 0 && (
           <Text style={{ color: C.text3, textAlign: 'center', marginTop: 24, fontSize: 13 }}>
-            {selMilestone} 마일스톤 이슈가 없습니다
+            {selMilestone === 'TBD' ? 'TBD 이슈가 없습니다' : `${selMilestone} 마일스톤 이슈가 없습니다`}
           </Text>
         )}
 

@@ -165,6 +165,29 @@ export async function fetchIssuesByMilestone(repo: string, milestoneTitle: strin
     }));
 }
 
+export async function fetchIssuesWithoutMilestone(repo: string): Promise<GitHubIssueDetail[]> {
+  const headers = await getHeaders();
+  const [owner, repoName] = repo.split('/');
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repoName}/issues?milestone=none&state=open&per_page=100`,
+    { headers }
+  );
+  if (!res.ok) return [];
+  const data: any[] = await res.json();
+  return data
+    .filter((i) => !i.pull_request)
+    .map((i) => ({
+      number: i.number,
+      title: i.title,
+      state: i.state,
+      repo,
+      html_url: i.html_url as string,
+      milestone_title: null,
+      created_at: i.created_at as string,
+      assignees: (i.assignees as any[]).map((a) => a.login as string),
+    }));
+}
+
 export async function createIssue(repo: string, title: string, body: string): Promise<number> {
   const token = await getToken();
   const headers: Record<string, string> = {
