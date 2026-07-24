@@ -17,7 +17,7 @@ import {
   today, todayKST, addWorkingDays, fmtDisplay, isInTimeView,
 } from '../lib/constants';
 import { styles } from '../lib/styles';
-import { MonthCalendar, WeekView, DayView } from '../components/CalendarViews';
+import { MonthCalendar, WeekView, DayView, ScheduleView } from '../components/CalendarViews';
 import { SettingsModal } from '../components/SettingsModal';
 import { ColFilter, DetailPanel } from '../components/DetailPanel';
 import { WorkspaceView } from '../components/WorkspaceView';
@@ -744,6 +744,13 @@ export default function HomeScreen() {
               onSelectTask={setSelectedTask}
               mode={mode}
               onAdd={openAdd}
+            />
+          ) : timeView === 'schedule' ? (
+            <ScheduleView
+              tasks={tasks}
+              onSelectTask={setSelectedTask}
+              onAdd={openAdd}
+              C={C}
             />
           ) : (
             <>

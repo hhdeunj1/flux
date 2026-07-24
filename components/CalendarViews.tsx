@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, FlatList } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, FlatList, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Task } from '../lib/supabase';
-import { today, STATUS_META, TASK_TYPES } from '../lib/constants';
+import { today, todayKST, STATUS_META, TASK_TYPES, ThemeColors } from '../lib/constants';
 import { styles } from '../lib/styles';
 
 const WEEK_DAYS  = ['월', '화', '수', '목', '금', '토', '일'];
@@ -271,5 +271,235 @@ export function DayView({ tasks, day, onPrev, onNext, onSelectTask, mode, onAdd 
         />
       )}
     </View>
+  );
+}
+
+// ─── 일정 캘린더 ───────────────────────────────────────────
+export function ScheduleView({ tasks, onSelectTask, onAdd, C }: {
+  tasks: Task[];
+  onSelectTask: (task: Task) => void;
+  onAdd: () => void;
+  C: ThemeColors;
+}) {
+  const todayStr = todayKST();
+  const todayMs  = Date.parse(todayStr);
+
+  const daysUntil = (dateStr: string) =>
+    Math.ceil((Date.parse(dateStr.split('T')[0]) - todayMs) / 86400000);
+
+  const dLabel = (d: number) =>
+    d < 0 ? `D+${Math.abs(d)}` : d === 0 ? '오늘' : `D-${d}`;
+
+  // schedule 이벤트: due_date 있는 것만, 날짜 오름차순
+  const scheduleEvents = tasks
+    .filter(t => t.type === 'schedule' && t.due_date)
+    .sort((a, b) => a.due_date!.localeCompare(b.due_date!));
+
+  const allWorkTasks = tasks.filter(t => t.type !== 'schedule');
+
+  // milestone별 같은 마일스톤 schedule 이벤트 목록 (그룹핑용)
+  const eventsByMs: Record<string, Task[]> = {};
+  scheduleEvents.forEach(se => {
+    const key = se.milestone ?? '__none__';
+    if (!eventsByMs[key]) eventsByMs[key] = [];
+    eventsByMs[key].push(se);
+  });
+
+  // 각 schedule 이벤트에 속하는 미완료 태스크 계산
+  const grouped = scheduleEvents.map(se => {
+    const msKey  = se.milestone ?? '__none__';
+    const seDate = se.due_date!.split('T')[0];
+    const sameMsEvents = eventsByMs[msKey] ?? [];
+    const idx    = sameMsEvents.findIndex(s => s.id === se.id);
+    const prevDate = idx > 0 ? sameMsEvents[idx - 1].due_date!.split('T')[0] : null;
+    const firstUpcomingId = sameMsEvents.find(s => s.due_date!.split('T')[0] >= todayStr)?.id;
+
+    const related = allWorkTasks.filter(t => {
+      if (t.status === 'done') return false;
+      if ((t.milestone ?? '__none__') !== msKey) return false;
+      if (t.due_date) {
+        const td = t.due_date.split('T')[0];
+        return td <= seDate && (!prevDate || td > prevDate);
+      }
+      // due_date 없으면 → 마일스톤의 첫 번째 다가오는 이벤트에 배정
+      return firstUpcomingId === se.id;
+    });
+
+    // 진행률: 같은 milestone 완료 태스크 / 전체
+    const msTotal = allWorkTasks.filter(t => (t.milestone ?? '__none__') === msKey).length;
+    const msDone  = allWorkTasks.filter(t => (t.milestone ?? '__none__') === msKey && t.status === 'done').length;
+
+    return { event: se, tasks: related, msTotal, msDone };
+  });
+
+  // 어떤 schedule 이벤트에도 속하지 않는 미완료 태스크
+  const scheduledIds = new Set(grouped.flatMap(g => g.tasks.map(t => t.id)));
+  const unscheduled  = allWorkTasks.filter(t => !scheduledIds.has(t.id) && t.status !== 'done');
+
+  // 오늘 마감 / 기한 초과
+  const urgent = allWorkTasks.filter(
+    t => t.status !== 'done' && t.due_date && t.due_date.split('T')[0] <= todayStr
+  );
+
+  const urgencyColor = (td: string | null): string => {
+    if (!td) return C.text4;
+    const d = daysUntil(td);
+    if (d <= 0)  return '#FF3B30';
+    if (d <= 3)  return '#FF6961';
+    if (d <= 7)  return '#FF9500';
+    if (d <= 14) return '#FFCC00';
+    return C.text3;
+  };
+
+  return (
+    <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ paddingBottom: 60 }}>
+      {/* 탑바 */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border }}>
+        <Text style={{ fontSize: 15, fontWeight: '600', color: C.text, flex: 1 }}>일정 캘린더</Text>
+        <TouchableOpacity onPress={onAdd}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#007AFF', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }}>
+          <Ionicons name="add" size={14} color="#fff" />
+          <Text style={{ fontSize: 12, color: '#fff', fontWeight: '500' }}>추가</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 오늘 마감 / 기한 초과 배너 */}
+      {urgent.length > 0 && (
+        <View style={{ backgroundColor: 'rgba(255,59,48,0.07)', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,59,48,0.25)', paddingHorizontal: 14, paddingVertical: 10 }}>
+          <Text style={{ fontSize: 12, fontWeight: '600', color: '#FF3B30', marginBottom: 6 }}>
+            오늘 마감 / 기한 초과 ({urgent.length})
+          </Text>
+          {urgent.map(t => (
+            <TouchableOpacity key={t.id} onPress={() => onSelectTask(t)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF3B30' }} />
+              <Text style={{ fontSize: 13, color: C.text, flex: 1 }} numberOfLines={1}>{t.title}</Text>
+              <Text style={{ fontSize: 11, color: '#FF3B30', fontVariant: ['tabular-nums'] }}>
+                {t.due_date!.split('T')[0].substring(5).replace('-', '/')}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* 빈 상태 */}
+      {scheduleEvents.length === 0 && (
+        <View style={{ padding: 48, alignItems: 'center', gap: 10 }}>
+          <Text style={{ fontSize: 22, color: '#5AC8FA' }}>◆</Text>
+          <Text style={{ fontSize: 15, color: C.text2, fontWeight: '600' }}>등록된 일정이 없어요</Text>
+          <Text style={{ fontSize: 13, color: C.text3, textAlign: 'center', lineHeight: 20 }}>
+            태스크를 추가할 때 타입을 Schedule로{'\n'}설정하면 여기에 일정이 표시돼요
+          </Text>
+        </View>
+      )}
+
+      {/* Schedule 이벤트 섹션 */}
+      {grouped.map(({ event: se, tasks: seTasks, msTotal, msDone }) => {
+        const days   = daysUntil(se.due_date!.split('T')[0]);
+        const isPast = days < 0;
+        const dColor = isPast ? C.text4 : days <= 3 ? '#FF3B30' : days <= 7 ? '#FF9500' : days <= 14 ? '#FFCC00' : '#5AC8FA';
+        const prog   = msTotal > 0 ? msDone / msTotal : 0;
+
+        return (
+          <View key={se.id} style={{ marginTop: 14 }}>
+            {/* 이벤트 헤더 */}
+            <TouchableOpacity onPress={() => onSelectTask(se)}
+              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, backgroundColor: C.bg2, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
+              <Text style={{ fontSize: 14, color: '#5AC8FA', fontWeight: '700', marginRight: 6 }}>◆</Text>
+              <Text style={{ fontSize: 14, color: C.text, fontWeight: '600', flex: 1 }}>{se.title}</Text>
+              {se.milestone && (
+                <View style={{ backgroundColor: C.bg3, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginRight: 8 }}>
+                  <Text style={{ fontSize: 10, color: C.text3 }}>{se.milestone}</Text>
+                </View>
+              )}
+              <Text style={{ fontSize: 13, fontWeight: '600', color: dColor, fontVariant: ['tabular-nums'] }}>
+                {dLabel(days)}
+              </Text>
+              <Text style={{ fontSize: 12, color: C.text4, marginLeft: 4, fontVariant: ['tabular-nums'] }}>
+                · {se.due_date!.split('T')[0].substring(5).replace('-', '/')}
+              </Text>
+            </TouchableOpacity>
+
+            {/* 진행률 */}
+            {msTotal > 0 && (
+              <View style={{ paddingHorizontal: 14, paddingTop: 8, paddingBottom: 6, backgroundColor: C.bg }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={{ fontSize: 11, color: C.text4 }}>{msDone} / {msTotal} 완료</Text>
+                  <Text style={{ fontSize: 11, color: prog === 1 ? '#30D158' : C.text4 }}>{Math.round(prog * 100)}%</Text>
+                </View>
+                <View style={{ height: 3, backgroundColor: C.bg3, borderRadius: 2, overflow: 'hidden' }}>
+                  <View style={{ height: 3, width: `${prog * 100}%` as any, backgroundColor: prog === 1 ? '#30D158' : '#007AFF', borderRadius: 2 }} />
+                </View>
+              </View>
+            )}
+
+            {/* 태스크 없음 */}
+            {seTasks.length === 0 && (
+              <View style={{ paddingHorizontal: 14, paddingVertical: 10 }}>
+                <Text style={{ fontSize: 12, color: C.text4, fontStyle: 'italic' }}>이 일정에 연결된 태스크 없음</Text>
+              </View>
+            )}
+
+            {/* 태스크 목록 */}
+            {[...seTasks]
+              .sort((a, b) => {
+                if (!a.due_date && !b.due_date) return 0;
+                if (!a.due_date) return 1;
+                if (!b.due_date) return -1;
+                return a.due_date.localeCompare(b.due_date);
+              })
+              .map(t => {
+                const td      = t.due_date ? t.due_date.split('T')[0] : null;
+                const taskDays = td ? daysUntil(td) : null;
+                const uc      = urgencyColor(td);
+                const sm_meta = STATUS_META[t.status];
+                return (
+                  <TouchableOpacity key={t.id} onPress={() => onSelectTask(t)}
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.rowBorder, gap: 8 }}>
+                    <Text style={{ fontSize: 11, color: uc, width: 36, textAlign: 'right', fontVariant: ['tabular-nums'], fontWeight: (taskDays !== null && taskDays <= 3) ? '600' : '400' }}>
+                      {taskDays !== null ? dLabel(taskDays) : '미정'}
+                    </Text>
+                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: uc }} />
+                    <Text style={{ fontSize: 13, color: t.status === 'in_confirm' ? C.text3 : C.text, flex: 1 }} numberOfLines={1}>
+                      {t.title}
+                    </Text>
+                    {t.product && (
+                      <Text style={{ fontSize: 10, color: C.text3 }}>
+                        {t.product.replace('앱', '').replace('기사', '')}
+                      </Text>
+                    )}
+                    <View style={{ backgroundColor: sm_meta.bg, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}>
+                      <Text style={{ fontSize: 10, color: sm_meta.color }}>{sm_meta.label}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+          </View>
+        );
+      })}
+
+      {/* 일정 미분류 */}
+      {unscheduled.length > 0 && (
+        <View style={{ marginTop: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, backgroundColor: C.bg2, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
+            <Text style={{ fontSize: 12, color: C.text3 }}>일정 미분류</Text>
+            <Text style={{ fontSize: 11, color: C.text4, marginLeft: 4 }}>({unscheduled.length})</Text>
+          </View>
+          {unscheduled.map(t => {
+            const sm_meta = STATUS_META[t.status];
+            return (
+              <TouchableOpacity key={t.id} onPress={() => onSelectTask(t)}
+                style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.rowBorder, gap: 8 }}>
+                <Text style={{ fontSize: 13, color: C.text, flex: 1 }} numberOfLines={1}>{t.title}</Text>
+                {t.milestone && <Text style={{ fontSize: 11, color: C.text4 }}>{t.milestone}</Text>}
+                <View style={{ backgroundColor: sm_meta.bg, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}>
+                  <Text style={{ fontSize: 10, color: sm_meta.color }}>{sm_meta.label}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+    </ScrollView>
   );
 }

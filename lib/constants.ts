@@ -2,7 +2,7 @@ import { Task, TaskType, ChecklistItem } from './supabase';
 
 // ─── 타입 ──────────────────────────────────────────────────
 export type AppMode    = 'work' | 'work2' | 'personal';
-export type TimeView   = 'all' | 'monthly' | 'weekly' | 'daily';
+export type TimeView   = 'all' | 'monthly' | 'weekly' | 'daily' | 'schedule';
 export type SortKey    = 'product' | 'milestone' | 'type' | 'title' | 'status' | 'business' | null;
 export type SortDir    = 'asc' | 'desc';
 export type FilterMap  = Partial<Record<'product' | 'milestone' | 'type' | 'status' | 'business', string>>;
@@ -100,10 +100,11 @@ export const TASK_TYPES: { value: TaskType; label: string; short: string; color:
 export const SELECTABLE_TYPES = TASK_TYPES.filter((t) => t.value !== 'etc');
 
 export const TIME_VIEWS: { value: TimeView; label: string }[] = [
-  { value: 'all',     label: '전체' },
-  { value: 'monthly', label: '월' },
-  { value: 'weekly',  label: '주' },
-  { value: 'daily',   label: '일' },
+  { value: 'all',      label: '전체' },
+  { value: 'monthly',  label: '월' },
+  { value: 'weekly',   label: '주' },
+  { value: 'daily',    label: '일' },
+  { value: 'schedule', label: '일정' },
 ];
 
 // ─── 유틸 함수 ─────────────────────────────────────────────
