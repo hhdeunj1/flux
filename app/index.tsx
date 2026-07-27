@@ -179,7 +179,7 @@ export default function HomeScreen() {
   useEffect(() => {
     (async () => {
       const m = await AsyncStorage.getItem('flux_mode') as AppMode | null;
-      setMode('work2');
+      setMode(m || 'work2');
       if (m) {
         const tv = await AsyncStorage.getItem(`flux_timeview_${m}`);
         setTimeView((tv as TimeView) || 'all');
@@ -387,7 +387,7 @@ export default function HomeScreen() {
 
   if (authLoading || modeLoading) return null;
   if (!session) return <LoginScreen />;
-  if (!mode) return null;
+  if (!mode) return <ModeSelectScreen onSelect={selectMode} />;
 
   if (mode === 'work2') return (
     <SafeAreaView style={{ flex: 1, backgroundColor: isLight ? '#F2F2F7' : '#161618' }}>

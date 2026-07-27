@@ -14,11 +14,21 @@ const REPO_TO_PRODUCT: Record<string, string> = Object.entries(PRODUCT_REPO_MAP)
   {} as Record<string, string>
 );
 import { IssueBrowser } from './IssueBrowser';
+import { MonthCalendar, WeekView, DayView, ScheduleView } from './CalendarViews';
 import {
   ThemeColors, DARK_C, LIGHT_C,
   PRODUCTS, MILESTONES, PRODUCT_DOT, PRODUCT_EMOJI, PRODUCT_SHORT, MILESTONE_DOT,
   todayKST, addWorkingDays, uid,
 } from '../lib/constants';
+
+type CalView = 'list' | 'monthly' | 'weekly' | 'daily' | 'schedule';
+const CAL_TABS: { value: CalView; label: string }[] = [
+  { value: 'list',     label: '목록' },
+  { value: 'monthly',  label: '월' },
+  { value: 'weekly',   label: '주' },
+  { value: 'daily',    label: '일' },
+  { value: 'schedule', label: '일정' },
+];
 
 // ─── types ─────────────────────────────────────────────────
 type Section = {
@@ -1034,6 +1044,10 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
 
   const [showFilterPanel, setShowFilterPanel] = useState(true);
   const [showIssueBrowser, setShowIssueBrowser] = useState(false);
+  const [calView, setCalView] = useState<CalView>('list');
+  const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }; });
+  const [calWeekStart, setCalWeekStart] = useState(() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().split('T')[0]; });
+  const [calDay, setCalDay] = useState(() => todayKST());
   const [sectionOrders, setSectionOrders] = useState<Record<string, string[]>>({});
   const [childOrders, setChildOrders] = useState<Record<string, string[]>>({});
 
@@ -1741,8 +1755,66 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
         </TouchableOpacity>
       </View>
 
+      {/* ── Cal Tab Bar ── */}
+      <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, gap: 4 }}>
+        {CAL_TABS.map((tab) => (
+          <TouchableOpacity
+            key={tab.value}
+            onPress={() => setCalView(tab.value)}
+            style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 7, backgroundColor: calView === tab.value ? C.bg3 : 'transparent' }}
+          >
+            <Text style={{ fontSize: 12, fontWeight: calView === tab.value ? '700' : '500', color: calView === tab.value ? C.text : C.text3 }}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* ── Calendar Views ── */}
+      {calView === 'monthly' ? (
+        <MonthCalendar
+          tasks={tasks}
+          year={calMonth.year}
+          month={calMonth.month}
+          onPrev={() => setCalMonth(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 })}
+          onNext={() => setCalMonth(({ year, month }) => month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 })}
+          onSelectTask={(task) => { /* TODO: open detail */ }}
+          mode={mode}
+          onAdd={() => { setAddSectionMilestone(null); setShowAddSection(true); }}
+          onDatePress={(_date) => {}}
+        />
+      ) : calView === 'weekly' ? (
+        <WeekView
+          tasks={tasks}
+          weekStart={calWeekStart}
+          onPrev={() => setCalWeekStart((s) => { const d = new Date(s); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; })}
+          onNext={() => setCalWeekStart((s) => { const d = new Date(s); d.setDate(d.getDate() + 7); return d.toISOString().split('T')[0]; })}
+          onSelectTask={(task) => {}}
+          mode={mode}
+          onAdd={() => { setAddSectionMilestone(null); setShowAddSection(true); }}
+          onDatePress={(_date) => {}}
+        />
+      ) : calView === 'daily' ? (
+        <DayView
+          tasks={tasks}
+          day={calDay}
+          onPrev={() => setCalDay((s) => { const d = new Date(s); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0]; })}
+          onNext={() => setCalDay((s) => { const d = new Date(s); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })}
+          onSelectTask={(task) => {}}
+          mode={mode}
+          onAdd={() => { setAddSectionMilestone(null); setShowAddSection(true); }}
+        />
+      ) : calView === 'schedule' ? (
+        <ScheduleView
+          tasks={tasks}
+          onSelectTask={(task) => {}}
+          onAdd={() => { setAddSectionMilestone(null); setShowAddSection(true); }}
+          C={C}
+        />
+      ) : null}
+
       {/* ── Content: Filter Sidebar + Multi-Column ── */}
-      {tasks.length === 0 ? (
+      {calView !== 'list' ? null : tasks.length === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 }}>
           <Ionicons name="layers-outline" size={48} color={C.text4} />
           <Text style={{ fontSize: 16, color: C.text3, fontWeight: '600' }}>업무 항목이 없어요</Text>
