@@ -503,3 +503,99 @@ export function ScheduleView({ tasks, onSelectTask, onAdd, C }: {
     </ScrollView>
   );
 }
+
+// ─── 미니 캘린더 (스플릿뷰용) ─────────────────────────────────
+export function SplitCalendar({ tasks, year, month, selectedDate, onSelectDate, onPrev, onNext, C }: {
+  tasks: Task[];
+  year: number;
+  month: number;
+  selectedDate: string | null;
+  onSelectDate: (date: string) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  C: ThemeColors;
+}) {
+  const todayStr    = todayKST();
+  const firstDow    = new Date(year, month, 1).getDay();
+  const startOffset = firstDow === 0 ? 6 : firstDow - 1;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const countByDate: Record<string, number> = {};
+  tasks.forEach((t) => {
+    const ref = t.due_date ?? t.start_date;
+    if (!ref) return;
+    const d = ref.split('T')[0];
+    const [ty, tm] = d.split('-').map(Number);
+    if (ty === year && tm - 1 === month) countByDate[d] = (countByDate[d] || 0) + 1;
+  });
+
+  const cells: (number | null)[] = [
+    ...Array(startOffset).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks: (number | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+
+  return (
+    <View style={{ padding: 12, backgroundColor: C.bg2, borderRadius: 12 }}>
+      {/* 월 네비 */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <TouchableOpacity onPress={onPrev} style={{ padding: 4 }}>
+          <Ionicons name="chevron-back" size={15} color={C.text3} />
+        </TouchableOpacity>
+        <Text style={{ fontSize: 13, fontWeight: '600', color: C.text }}>{year}년 {month + 1}월</Text>
+        <TouchableOpacity onPress={onNext} style={{ padding: 4 }}>
+          <Ionicons name="chevron-forward" size={15} color={C.text3} />
+        </TouchableOpacity>
+      </View>
+      {/* 요일 헤더 */}
+      <View style={{ flexDirection: 'row', marginBottom: 2 }}>
+        {['월', '화', '수', '목', '금', '토', '일'].map((d, i) => (
+          <View key={d} style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={{ fontSize: 10, color: i >= 5 ? '#FF6B6B' : C.text3, fontWeight: '500' }}>{d}</Text>
+          </View>
+        ))}
+      </View>
+      {/* 날짜 그리드 */}
+      {weeks.map((week, wi) => (
+        <View key={wi} style={{ flexDirection: 'row' }}>
+          {week.map((day, di) => {
+            if (!day) return <View key={`e-${wi}-${di}`} style={{ flex: 1, height: 36 }} />;
+            const dateStr   = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const isToday   = dateStr === todayStr;
+            const isSel     = dateStr === selectedDate;
+            const cnt       = countByDate[dateStr] || 0;
+            const isWeekend = di >= 5;
+            return (
+              <TouchableOpacity
+                key={day}
+                onPress={() => onSelectDate(dateStr)}
+                style={{ flex: 1, alignItems: 'center', paddingVertical: 3 }}
+              >
+                <View style={{
+                  width: 28, height: 28, borderRadius: 14,
+                  alignItems: 'center', justifyContent: 'center',
+                  backgroundColor: isSel ? '#007AFF' : isToday ? 'rgba(0,122,255,0.15)' : 'transparent',
+                }}>
+                  <Text style={{
+                    fontSize: 12,
+                    fontWeight: isSel || isToday ? '700' : '400',
+                    color: isSel ? '#fff' : isToday ? '#007AFF' : isWeekend ? '#FF6B6B' : C.text,
+                  }}>{day}</Text>
+                </View>
+                {cnt > 0 && (
+                  <View style={{ flexDirection: 'row', gap: 1.5, marginTop: 1 }}>
+                    {Array.from({ length: Math.min(cnt, 3) }).map((_, i) => (
+                      <View key={i} style={{ width: 3.5, height: 3.5, borderRadius: 2, backgroundColor: isSel ? '#fff8' : '#007AFF88' }} />
+                    ))}
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}

@@ -14,15 +14,16 @@ const REPO_TO_PRODUCT: Record<string, string> = Object.entries(PRODUCT_REPO_MAP)
   {} as Record<string, string>
 );
 import { IssueBrowser } from './IssueBrowser';
-import { MonthCalendar, WeekView, DayView, ScheduleView } from './CalendarViews';
+import { MonthCalendar, WeekView, DayView, ScheduleView, SplitCalendar } from './CalendarViews';
 import {
   ThemeColors, DARK_C, LIGHT_C,
   PRODUCTS, MILESTONES, PRODUCT_DOT, PRODUCT_EMOJI, PRODUCT_SHORT, MILESTONE_DOT,
   todayKST, addWorkingDays, uid,
 } from '../lib/constants';
 
-type CalView = 'list' | 'monthly' | 'weekly' | 'daily' | 'schedule';
+type CalView = 'split' | 'list' | 'monthly' | 'weekly' | 'daily' | 'schedule';
 const CAL_TABS: { value: CalView; label: string }[] = [
+  { value: 'split',    label: '스플릿' },
   { value: 'list',     label: '목록' },
   { value: 'monthly',  label: '월' },
   { value: 'weekly',   label: '주' },
@@ -1048,6 +1049,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }; });
   const [calWeekStart, setCalWeekStart] = useState(() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().split('T')[0]; });
   const [calDay, setCalDay] = useState(() => todayKST());
+  const [splitSelectedDate, setSplitSelectedDate] = useState<string>(() => todayKST());
   const [sectionOrders, setSectionOrders] = useState<Record<string, string[]>>({});
   const [childOrders, setChildOrders] = useState<Record<string, string[]>>({});
 
@@ -1771,7 +1773,100 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
       </View>
 
       {/* ── Calendar Views ── */}
-      {calView === 'monthly' ? (
+      {calView === 'split' ? (
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          {/* ── 왼쪽: 날짜별 태스크 목록 ── */}
+          <View style={{ flex: 1, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border }}>
+            {/* 날짜 헤더 */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, gap: 8 }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: C.text }}>
+                {splitSelectedDate
+                  ? `${splitSelectedDate.slice(5, 7)}/${splitSelectedDate.slice(8)} 마감`
+                  : '날짜 선택'}
+              </Text>
+              {splitSelectedDate !== todayKST() && (
+                <TouchableOpacity onPress={() => setSplitSelectedDate(todayKST())}
+                  style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: 'rgba(0,122,255,0.12)' }}>
+                  <Text style={{ fontSize: 11, color: '#007AFF', fontWeight: '600' }}>오늘로</Text>
+                </TouchableOpacity>
+              )}
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity onPress={() => setShowIssueBrowser(true)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: '#5E5CE622', borderWidth: StyleSheet.hairlineWidth, borderColor: '#5E5CE688' }}>
+                <Ionicons name="logo-github" size={12} color="#5E5CE6" />
+                <Text style={{ fontSize: 11, color: '#5E5CE6', fontWeight: '600' }}>이슈</Text>
+              </TouchableOpacity>
+            </View>
+            {/* 선택 날짜 태스크 */}
+            {(() => {
+              const dayTasks = tasks.filter((t) => {
+                const ref = t.due_date ?? t.start_date;
+                return ref && ref.split('T')[0] === splitSelectedDate;
+              }).sort((a, b) => {
+                const order = ['urgent','high','medium','low'];
+                return order.indexOf(a.priority ?? 'low') - order.indexOf(b.priority ?? 'low');
+              });
+              if (dayTasks.length === 0) return (
+                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  <Ionicons name="calendar-outline" size={32} color={C.text4} />
+                  <Text style={{ fontSize: 13, color: C.text3 }}>이 날짜에 마감인 태스크가 없어요</Text>
+                </View>
+              );
+              return (
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingVertical: 4 }}>
+                  {dayTasks.map((task) => {
+                    const sm = STATUS_META[task.status] ?? STATUS_META['todo'];
+                    return (
+                      <View key={task.id}
+                        style={{ paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.rowBorder }}>
+                        <Text style={{ fontSize: 13, color: C.text, fontWeight: '500', marginBottom: 5 }} numberOfLines={2}>{task.title}</Text>
+                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
+                          {task.product && (
+                            <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: C.chipBg }}>
+                              <Text style={{ fontSize: 10, color: C.chipText }}>{task.product}</Text>
+                            </View>
+                          )}
+                          {task.milestone && (
+                            <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: C.chipBg }}>
+                              <Text style={{ fontSize: 10, color: C.chipText }}>{task.milestone}</Text>
+                            </View>
+                          )}
+                          <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: sm.bg }}>
+                            <Text style={{ fontSize: 10, color: sm.color }}>{sm.label}</Text>
+                          </View>
+                          {task.due_date && (
+                            <Text style={{ fontSize: 10, color: C.text3, alignSelf: 'center' }}>
+                              due {task.due_date.split('T')[0]}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              );
+            })()}
+          </View>
+
+          {/* ── 오른쪽: 미니 캘린더 ── */}
+          <View style={{ width: 252, backgroundColor: C.bg, paddingHorizontal: 8, paddingVertical: 12 }}>
+            <SplitCalendar
+              tasks={tasks}
+              year={calMonth.year}
+              month={calMonth.month}
+              selectedDate={splitSelectedDate}
+              onSelectDate={(date) => {
+                setSplitSelectedDate(date);
+                const [y, m] = date.split('-').map(Number);
+                setCalMonth({ year: y, month: m - 1 });
+              }}
+              onPrev={() => setCalMonth(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 })}
+              onNext={() => setCalMonth(({ year, month }) => month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 })}
+              C={C}
+            />
+          </View>
+        </View>
+      ) : calView === 'monthly' ? (
         <MonthCalendar
           tasks={tasks}
           year={calMonth.year}
