@@ -987,8 +987,9 @@ function OutlineRow({
 
 // ─── 주간 계획 컴포넌트들 ─────────────────────────────────
 
-type DayPlan = { text: string; done: boolean; taskIds: string[] };
-const EMPTY_DAY_PLAN: DayPlan = { text: '', done: false, taskIds: [] };
+type DayPlanItem = { id: string; text: string; done: boolean; taskIds: string[] };
+type DayPlan = { items: DayPlanItem[] };
+const EMPTY_DAY_PLAN: DayPlan = { items: [] };
 const WEEK_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 type WeekDayKey = typeof WEEK_DAY_KEYS[number];
 const WEEK_DAY_LABELS: Record<WeekDayKey, string> = { mon: '월', tue: '화', wed: '수', thu: '목', fri: '금', sat: '토', sun: '일' };
@@ -1037,39 +1038,67 @@ function TaskPickModal({ visible, tasks, C, onClose, onToggle, selected }: {
 function DayPlanCell({ dayLabel, dateStr, plan, tasks, C, isToday, isWeekend, onChangePlan, onPickTasks }: {
   dayLabel: string; dateStr: string; plan: DayPlan; tasks: Task[];
   C: ThemeColors; isToday: boolean; isWeekend: boolean;
-  onChangePlan: (p: Partial<DayPlan>) => void; onPickTasks: () => void;
+  onChangePlan: (p: DayPlan) => void; onPickTasks: (itemId: string) => void;
 }) {
-  const linkedTasks = tasks.filter(t => plan.taskIds.includes(t.id));
   const d = parseInt(dateStr.split('-')[2]);
+
+  const addItem = () => {
+    const newItem: DayPlanItem = { id: uid(), text: '', done: false, taskIds: [] };
+    onChangePlan({ items: [...plan.items, newItem] });
+  };
+
+  const updateItem = (itemId: string, patch: Partial<DayPlanItem>) => {
+    onChangePlan({ items: plan.items.map(item => item.id === itemId ? { ...item, ...patch } : item) });
+  };
+
   return (
     <View style={{ flex: 1, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border, padding: 5, minHeight: 90 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3 }}>
-        <TouchableOpacity onPress={() => onChangePlan({ done: !plan.done })} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}>
-          <View style={{ width: 13, height: 13, borderRadius: 3, borderWidth: 1.5, borderColor: plan.done ? '#30D158' : (isToday ? '#007AFF' : C.border2), backgroundColor: plan.done ? '#30D158' : 'transparent', alignItems: 'center', justifyContent: 'center', marginRight: 3 }}>
-            {plan.done && <Ionicons name="checkmark" size={8} color="#fff" />}
-          </View>
-        </TouchableOpacity>
+      {/* 날짜 헤더 */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
         <Text style={{ fontSize: 10, fontWeight: '600', color: isToday ? '#007AFF' : (isWeekend ? '#FF453A' : C.text3) }}>{dayLabel}</Text>
         <Text style={{ fontSize: 10, color: isToday ? '#007AFF' : C.text4, marginLeft: 2 }}>{d}</Text>
       </View>
-      <TextInput
-        multiline value={plan.text} onChangeText={t => onChangePlan({ text: t })}
-        placeholder="입력..." placeholderTextColor={C.text4}
-        style={{ fontSize: 11, color: plan.done ? C.text4 : C.text, textDecorationLine: plan.done ? 'line-through' : 'none', lineHeight: 15, textAlignVertical: 'top', padding: 0, minHeight: 36 } as any}
-      />
-      {linkedTasks.length > 0 && (
-        <View style={{ marginTop: 3, flexDirection: 'row', flexWrap: 'wrap', gap: 2 }}>
-          {linkedTasks.map(t => (
-            <TouchableOpacity key={t.id} onPress={onPickTasks}>
-              <View style={{ paddingHorizontal: 4, paddingVertical: 2, borderRadius: 3, backgroundColor: C.chipBg, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
-                <Text style={{ fontSize: 9, color: C.text3 }} numberOfLines={1}>{t.title.length > 10 ? t.title.slice(0, 10) + '…' : t.title}</Text>
+      {/* 업무 항목들 */}
+      {plan.items.map(item => {
+        const linked = tasks.filter(t => item.taskIds.includes(t.id));
+        return (
+          <View key={item.id} style={{ marginBottom: 5 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 3 }}>
+              <TouchableOpacity onPress={() => updateItem(item.id, { done: !item.done })} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }} style={{ marginTop: 2 }}>
+                <View style={{ width: 12, height: 12, borderRadius: 3, borderWidth: 1.5, borderColor: item.done ? '#30D158' : C.border2, backgroundColor: item.done ? '#30D158' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                  {item.done && <Ionicons name="checkmark" size={8} color="#fff" />}
+                </View>
+              </TouchableOpacity>
+              <TextInput
+                value={item.text}
+                onChangeText={t => updateItem(item.id, { text: t })}
+                placeholder="항목..."
+                placeholderTextColor={C.text4}
+                style={{ flex: 1, fontSize: 11, color: item.done ? C.text4 : C.text, textDecorationLine: item.done ? 'line-through' : 'none', lineHeight: 15, padding: 0 } as any}
+                multiline
+              />
+              <TouchableOpacity onPress={() => onPickTasks(item.id)} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }} style={{ marginTop: 2 }}>
+                <Ionicons name="link-outline" size={10} color={linked.length > 0 ? '#007AFF' : C.text4} />
+              </TouchableOpacity>
+            </View>
+            {linked.length > 0 && (
+              <View style={{ marginTop: 2, marginLeft: 15, flexDirection: 'row', flexWrap: 'wrap', gap: 2 }}>
+                {linked.map(t => (
+                  <TouchableOpacity key={t.id} onPress={() => onPickTasks(item.id)}>
+                    <View style={{ paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3, backgroundColor: C.chipBg, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
+                      <Text style={{ fontSize: 9, color: C.text3 }} numberOfLines={1}>{t.title.length > 12 ? t.title.slice(0, 12) + '…' : t.title}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
               </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-      <TouchableOpacity onPress={onPickTasks} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }} style={{ marginTop: 2, alignSelf: 'flex-start' }}>
-        <Ionicons name="link-outline" size={10} color={C.text4} />
+            )}
+          </View>
+        );
+      })}
+      {/* 항목 추가 */}
+      <TouchableOpacity onPress={addItem} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }} style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 }}>
+        <Ionicons name="add" size={11} color={C.text4} />
+        <Text style={{ fontSize: 10, color: C.text4 }}>추가</Text>
       </TouchableOpacity>
     </View>
   );
@@ -1084,7 +1113,7 @@ function WeekPlanSection({ weekStart, tasks, C, onPrev, onNext }: {
     WEEK_DAY_KEYS.forEach(k => { init[k] = { ...EMPTY_DAY_PLAN }; });
     return init;
   });
-  const [pickDayKey, setPickDayKey] = React.useState<WeekDayKey | null>(null);
+  const [pickTarget, setPickTarget] = React.useState<{ dayKey: WeekDayKey; itemId: string } | null>(null);
   const goalTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const dayTimer  = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1092,7 +1121,7 @@ function WeekPlanSection({ weekStart, tasks, C, onPrev, onNext }: {
     AsyncStorage.getItem(`weekly_goal_${weekStart}`).then(v => setWeekGoal(v ?? ''));
     AsyncStorage.getItem(`weekly_day_plans_${weekStart}`).then(v => {
       const init: any = {};
-      WEEK_DAY_KEYS.forEach(k => { init[k] = { ...EMPTY_DAY_PLAN }; });
+      WEEK_DAY_KEYS.forEach(k => { init[k] = { items: [] }; });
       setDayPlans(v ? { ...init, ...JSON.parse(v) } : init);
     });
   }, [weekStart]);
@@ -1103,18 +1132,24 @@ function WeekPlanSection({ weekStart, tasks, C, onPrev, onNext }: {
     goalTimer.current = setTimeout(() => AsyncStorage.setItem(`weekly_goal_${weekStart}`, text), 500);
   };
 
-  const updateDayPlan = (dayKey: WeekDayKey, patch: Partial<DayPlan>) => {
+  const updateDayPlan = (dayKey: WeekDayKey, plan: DayPlan) => {
     setDayPlans(prev => {
-      const next = { ...prev, [dayKey]: { ...prev[dayKey], ...patch } };
+      const next = { ...prev, [dayKey]: plan };
       if (dayTimer.current) clearTimeout(dayTimer.current);
       dayTimer.current = setTimeout(() => AsyncStorage.setItem(`weekly_day_plans_${weekStart}`, JSON.stringify(next)), 300);
       return next;
     });
   };
 
-  const toggleTaskLink = (dayKey: WeekDayKey, taskId: string) => {
-    const cur = dayPlans[dayKey].taskIds;
-    updateDayPlan(dayKey, { taskIds: cur.includes(taskId) ? cur.filter(id => id !== taskId) : [...cur, taskId] });
+  const toggleTaskLink = (dayKey: WeekDayKey, itemId: string, taskId: string) => {
+    const plan = dayPlans[dayKey];
+    updateDayPlan(dayKey, {
+      items: plan.items.map(item => {
+        if (item.id !== itemId) return item;
+        const cur = item.taskIds;
+        return { ...item, taskIds: cur.includes(taskId) ? cur.filter(id => id !== taskId) : [...cur, taskId] };
+      }),
+    });
   };
 
   const startD = new Date(weekStart + 'T00:00:00');
@@ -1125,6 +1160,9 @@ function WeekPlanSection({ weekStart, tasks, C, onPrev, onNext }: {
   const todayStr = todayKST();
   const days = WEEK_DAY_KEYS.map((_, i) => { const d = new Date(startD); d.setDate(d.getDate() + i); return d.toISOString().split('T')[0]; });
   const rootTasks = tasks.filter(t => !t.parent_id);
+  const selectedTaskIds = pickTarget
+    ? new Set(dayPlans[pickTarget.dayKey].items.find(i => i.id === pickTarget.itemId)?.taskIds ?? [])
+    : new Set<string>();
 
   return (
     <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border }}>
@@ -1158,17 +1196,17 @@ function WeekPlanSection({ weekStart, tasks, C, onPrev, onNext }: {
             C={C}
             isToday={days[i] === todayStr}
             isWeekend={i >= 5}
-            onChangePlan={patch => updateDayPlan(dayKey, patch)}
-            onPickTasks={() => setPickDayKey(dayKey)}
+            onChangePlan={plan => updateDayPlan(dayKey, plan)}
+            onPickTasks={itemId => setPickTarget({ dayKey, itemId })}
           />
         ))}
       </View>
-      {pickDayKey && (
+      {pickTarget && (
         <TaskPickModal
           visible tasks={rootTasks} C={C}
-          onClose={() => setPickDayKey(null)}
-          onToggle={taskId => toggleTaskLink(pickDayKey, taskId)}
-          selected={new Set(dayPlans[pickDayKey].taskIds)}
+          onClose={() => setPickTarget(null)}
+          onToggle={taskId => toggleTaskLink(pickTarget.dayKey, pickTarget.itemId, taskId)}
+          selected={selectedTaskIds}
         />
       )}
     </View>
