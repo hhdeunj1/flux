@@ -13,24 +13,12 @@ const REPO_TO_PRODUCT: Record<string, string> = Object.entries(PRODUCT_REPO_MAP)
   (acc, [product, repo]) => ({ ...acc, [repo]: product }),
   {} as Record<string, string>
 );
-import { IssueBrowser } from './IssueBrowser';
-import { MonthCalendar, WeekView, DayView, ScheduleView, SplitCalendar, WeeklyPlanView } from './CalendarViews';
 import {
   ThemeColors, DARK_C, LIGHT_C,
   PRODUCTS, MILESTONES, PRODUCT_DOT, PRODUCT_EMOJI, PRODUCT_SHORT, MILESTONE_DOT,
   todayKST, addWorkingDays, uid,
 } from '../lib/constants';
 
-type CalView = 'split' | 'list' | 'monthly' | 'weekly' | 'daily' | 'schedule' | 'plan';
-const CAL_TABS: { value: CalView; label: string }[] = [
-  { value: 'split',    label: '스플릿' },
-  { value: 'list',     label: '목록' },
-  { value: 'monthly',  label: '월' },
-  { value: 'weekly',   label: '주' },
-  { value: 'daily',    label: '일' },
-  { value: 'schedule', label: '일정' },
-  { value: 'plan',     label: '계획' },
-];
 
 // ─── types ─────────────────────────────────────────────────
 type Section = {
@@ -997,6 +985,196 @@ function OutlineRow({
   );
 }
 
+// ─── 주간 계획 컴포넌트들 ─────────────────────────────────
+
+type DayPlan = { text: string; done: boolean; taskIds: string[] };
+const EMPTY_DAY_PLAN: DayPlan = { text: '', done: false, taskIds: [] };
+const WEEK_DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+type WeekDayKey = typeof WEEK_DAY_KEYS[number];
+const WEEK_DAY_LABELS: Record<WeekDayKey, string> = { mon: '월', tue: '화', wed: '수', thu: '목', fri: '금', sat: '토', sun: '일' };
+
+function TaskPickModal({ visible, tasks, C, onClose, onToggle, selected }: {
+  visible: boolean; tasks: Task[]; C: ThemeColors; onClose: () => void;
+  onToggle: (taskId: string) => void; selected: Set<string>;
+}) {
+  const [search, setSearch] = React.useState('');
+  const filtered = tasks.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' }]} onPress={onClose}>
+        <Pressable onPress={() => {}} style={{ backgroundColor: C.bg2, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, maxHeight: 420 }}>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: C.text, marginBottom: 10 }}>태스크 연결</Text>
+          <TextInput
+            value={search} onChangeText={setSearch}
+            placeholder="태스크 검색..." placeholderTextColor={C.text4}
+            style={{ fontSize: 13, color: C.text, backgroundColor: C.bg3, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border, marginBottom: 8 } as any}
+            autoFocus
+          />
+          <ScrollView style={{ maxHeight: 280 }} keyboardShouldPersistTaps="handled">
+            {filtered.map(task => {
+              const isSel = selected.has(task.id);
+              return (
+                <TouchableOpacity key={task.id} onPress={() => onToggle(task.id)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, paddingHorizontal: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.rowBorder }}>
+                  <View style={{ width: 16, height: 16, borderRadius: 4, borderWidth: 1.5, borderColor: isSel ? '#007AFF' : C.border2, backgroundColor: isSel ? '#007AFF' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                    {isSel && <Ionicons name="checkmark" size={10} color="#fff" />}
+                  </View>
+                  <Text style={{ flex: 1, fontSize: 13, color: C.text }} numberOfLines={1}>{task.title}</Text>
+                  {task.milestone && <Text style={{ fontSize: 10, color: C.text4 }}>{task.milestone}</Text>}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+          <TouchableOpacity onPress={onClose} style={{ marginTop: 12, alignItems: 'center', paddingVertical: 10, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.border }}>
+            <Text style={{ fontSize: 14, color: '#007AFF', fontWeight: '600' }}>완료</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function DayPlanCell({ dayLabel, dateStr, plan, tasks, C, isToday, isWeekend, onChangePlan, onPickTasks }: {
+  dayLabel: string; dateStr: string; plan: DayPlan; tasks: Task[];
+  C: ThemeColors; isToday: boolean; isWeekend: boolean;
+  onChangePlan: (p: Partial<DayPlan>) => void; onPickTasks: () => void;
+}) {
+  const linkedTasks = tasks.filter(t => plan.taskIds.includes(t.id));
+  const d = parseInt(dateStr.split('-')[2]);
+  return (
+    <View style={{ flex: 1, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border, padding: 5, minHeight: 90 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3 }}>
+        <TouchableOpacity onPress={() => onChangePlan({ done: !plan.done })} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}>
+          <View style={{ width: 13, height: 13, borderRadius: 3, borderWidth: 1.5, borderColor: plan.done ? '#30D158' : (isToday ? '#007AFF' : C.border2), backgroundColor: plan.done ? '#30D158' : 'transparent', alignItems: 'center', justifyContent: 'center', marginRight: 3 }}>
+            {plan.done && <Ionicons name="checkmark" size={8} color="#fff" />}
+          </View>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 10, fontWeight: '600', color: isToday ? '#007AFF' : (isWeekend ? '#FF453A' : C.text3) }}>{dayLabel}</Text>
+        <Text style={{ fontSize: 10, color: isToday ? '#007AFF' : C.text4, marginLeft: 2 }}>{d}</Text>
+      </View>
+      <TextInput
+        multiline value={plan.text} onChangeText={t => onChangePlan({ text: t })}
+        placeholder="입력..." placeholderTextColor={C.text4}
+        style={{ fontSize: 11, color: plan.done ? C.text4 : C.text, textDecorationLine: plan.done ? 'line-through' : 'none', lineHeight: 15, textAlignVertical: 'top', padding: 0, minHeight: 36 } as any}
+      />
+      {linkedTasks.length > 0 && (
+        <View style={{ marginTop: 3, flexDirection: 'row', flexWrap: 'wrap', gap: 2 }}>
+          {linkedTasks.map(t => (
+            <TouchableOpacity key={t.id} onPress={onPickTasks}>
+              <View style={{ paddingHorizontal: 4, paddingVertical: 2, borderRadius: 3, backgroundColor: C.chipBg, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
+                <Text style={{ fontSize: 9, color: C.text3 }} numberOfLines={1}>{t.title.length > 10 ? t.title.slice(0, 10) + '…' : t.title}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+      <TouchableOpacity onPress={onPickTasks} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }} style={{ marginTop: 2, alignSelf: 'flex-start' }}>
+        <Ionicons name="link-outline" size={10} color={C.text4} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function WeekPlanSection({ weekStart, tasks, C, onPrev, onNext }: {
+  weekStart: string; tasks: Task[]; C: ThemeColors; onPrev: () => void; onNext: () => void;
+}) {
+  const [weekGoal, setWeekGoal] = React.useState('');
+  const [dayPlans, setDayPlans] = React.useState<Record<WeekDayKey, DayPlan>>(() => {
+    const init: any = {};
+    WEEK_DAY_KEYS.forEach(k => { init[k] = { ...EMPTY_DAY_PLAN }; });
+    return init;
+  });
+  const [pickDayKey, setPickDayKey] = React.useState<WeekDayKey | null>(null);
+  const goalTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dayTimer  = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    AsyncStorage.getItem(`weekly_goal_${weekStart}`).then(v => setWeekGoal(v ?? ''));
+    AsyncStorage.getItem(`weekly_day_plans_${weekStart}`).then(v => {
+      const init: any = {};
+      WEEK_DAY_KEYS.forEach(k => { init[k] = { ...EMPTY_DAY_PLAN }; });
+      setDayPlans(v ? { ...init, ...JSON.parse(v) } : init);
+    });
+  }, [weekStart]);
+
+  const handleGoalChange = (text: string) => {
+    setWeekGoal(text);
+    if (goalTimer.current) clearTimeout(goalTimer.current);
+    goalTimer.current = setTimeout(() => AsyncStorage.setItem(`weekly_goal_${weekStart}`, text), 500);
+  };
+
+  const updateDayPlan = (dayKey: WeekDayKey, patch: Partial<DayPlan>) => {
+    setDayPlans(prev => {
+      const next = { ...prev, [dayKey]: { ...prev[dayKey], ...patch } };
+      if (dayTimer.current) clearTimeout(dayTimer.current);
+      dayTimer.current = setTimeout(() => AsyncStorage.setItem(`weekly_day_plans_${weekStart}`, JSON.stringify(next)), 300);
+      return next;
+    });
+  };
+
+  const toggleTaskLink = (dayKey: WeekDayKey, taskId: string) => {
+    const cur = dayPlans[dayKey].taskIds;
+    updateDayPlan(dayKey, { taskIds: cur.includes(taskId) ? cur.filter(id => id !== taskId) : [...cur, taskId] });
+  };
+
+  const startD = new Date(weekStart + 'T00:00:00');
+  const endD   = new Date(startD); endD.setDate(endD.getDate() + 6);
+  const fmt    = (dt: Date) => `${dt.getMonth() + 1}/${dt.getDate()}`;
+  const weekOrd = Math.ceil(startD.getDate() / 7);
+  const weekLabel = `${startD.getFullYear()}년 ${startD.getMonth() + 1}월 ${weekOrd}째주`;
+  const todayStr = todayKST();
+  const days = WEEK_DAY_KEYS.map((_, i) => { const d = new Date(startD); d.setDate(d.getDate() + i); return d.toISOString().split('T')[0]; });
+  const rootTasks = tasks.filter(t => !t.parent_id);
+
+  return (
+    <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, gap: 6 }}>
+        <TouchableOpacity onPress={onPrev} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+          <Ionicons name="chevron-back" size={15} color={C.text3} />
+        </TouchableOpacity>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: C.text }}>
+          {weekLabel}
+          <Text style={{ fontSize: 10, fontWeight: '400', color: C.text3 }}>{'  '}{fmt(startD)}–{fmt(endD)}</Text>
+        </Text>
+        <TouchableOpacity onPress={onNext} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+          <Ionicons name="chevron-forward" size={15} color={C.text3} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <TextInput
+            value={weekGoal} onChangeText={handleGoalChange}
+            placeholder="이번 주 목표..." placeholderTextColor={C.text4}
+            style={{ fontSize: 12, color: C.text, paddingVertical: 0 } as any}
+          />
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row' }}>
+        {WEEK_DAY_KEYS.map((dayKey, i) => (
+          <DayPlanCell
+            key={dayKey}
+            dayLabel={WEEK_DAY_LABELS[dayKey]}
+            dateStr={days[i]}
+            plan={dayPlans[dayKey]}
+            tasks={rootTasks}
+            C={C}
+            isToday={days[i] === todayStr}
+            isWeekend={i >= 5}
+            onChangePlan={patch => updateDayPlan(dayKey, patch)}
+            onPickTasks={() => setPickDayKey(dayKey)}
+          />
+        ))}
+      </View>
+      {pickDayKey && (
+        <TaskPickModal
+          visible tasks={rootTasks} C={C}
+          onClose={() => setPickDayKey(null)}
+          onToggle={taskId => toggleTaskLink(pickDayKey, taskId)}
+          selected={new Set(dayPlans[pickDayKey].taskIds)}
+        />
+      )}
+    </View>
+  );
+}
+
 // ─── WorkspaceView ─────────────────────────────────────────
 export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, username, mode = 'work2', hideModeSwitch = false }: {
   isLight: boolean;
@@ -1045,12 +1223,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
   const [addSectionMilestone, setAddSectionMilestone] = useState<string | null>(null);
 
   const [showFilterPanel, setShowFilterPanel] = useState(true);
-  const [showIssueBrowser, setShowIssueBrowser] = useState(false);
-  const [calView, setCalView] = useState<CalView>('list');
-  const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { year: d.getFullYear(), month: d.getMonth() }; });
   const [calWeekStart, setCalWeekStart] = useState(() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().split('T')[0]; });
-  const [calDay, setCalDay] = useState(() => todayKST());
-  const [splitSelectedDate, setSplitSelectedDate] = useState<string>(() => todayKST());
   const [sectionOrders, setSectionOrders] = useState<Record<string, string[]>>({});
   const [childOrders, setChildOrders] = useState<Record<string, string[]>>({});
 
@@ -1072,22 +1245,25 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
   }, []);
   const [hiddenMilestones, setHiddenMilestones] = useState<Set<string>>(new Set());
 
-
   const toggleHideMilestone = (ms: string) => {
     setHiddenMilestones((prev) => {
       const next = new Set(prev);
       next.has(ms) ? next.delete(ms) : next.add(ms);
+      AsyncStorage.setItem(`${mode}_hidden_milestones`, JSON.stringify([...next]));
       return next;
     });
   };
 
-  // Load assignees + section orders
+  // Load assignees + section orders + hidden milestones
   useEffect(() => {
     AsyncStorage.getItem(`${mode}_assignees`).then((v) => {
       if (v) setAssignees(JSON.parse(v));
     });
     AsyncStorage.getItem(`${mode}_section_orders`).then((v) => {
       if (v) setSectionOrders(JSON.parse(v));
+    });
+    AsyncStorage.getItem(`${mode}_hidden_milestones`).then((v) => {
+      if (v) setHiddenMilestones(new Set(JSON.parse(v)));
     });
   }, []);
 
@@ -1743,13 +1919,6 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
           <Text style={{ fontSize: 12, color: folderSelectMode ? '#fff' : '#5E5CE6', fontWeight: '600' }}>묶기</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => setShowIssueBrowser(true)}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 7, backgroundColor: '#5E5CE622', borderWidth: StyleSheet.hairlineWidth, borderColor: '#5E5CE688' }}
-        >
-          <Ionicons name="logo-github" size={13} color="#5E5CE6" />
-          <Text style={{ fontSize: 12, color: '#5E5CE6', fontWeight: '600' }}>이슈</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
           onPress={() => { setAddSectionMilestone(null); setShowAddSection(true); }}
           style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 7, backgroundColor: '#007AFF' }}
         >
@@ -1758,168 +1927,17 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
         </TouchableOpacity>
       </View>
 
-      {/* ── Cal Tab Bar ── */}
-      <View style={{ flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, gap: 4 }}>
-        {CAL_TABS.map((tab) => (
-          <TouchableOpacity
-            key={tab.value}
-            onPress={() => setCalView(tab.value)}
-            style={{ paddingHorizontal: 12, paddingVertical: 5, borderRadius: 7, backgroundColor: calView === tab.value ? C.bg3 : 'transparent' }}
-          >
-            <Text style={{ fontSize: 12, fontWeight: calView === tab.value ? '700' : '500', color: calView === tab.value ? C.text : C.text3 }}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* ── Calendar Views ── */}
-      {calView === 'split' ? (
-        <View style={{ flex: 1, flexDirection: 'row' }}>
-          {/* ── 왼쪽: 날짜별 태스크 목록 ── */}
-          <View style={{ flex: 1, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border }}>
-            {/* 날짜 헤더 */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, gap: 8 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: C.text }}>
-                {splitSelectedDate
-                  ? `${splitSelectedDate.slice(5, 7)}/${splitSelectedDate.slice(8)} 마감`
-                  : '날짜 선택'}
-              </Text>
-              {splitSelectedDate !== todayKST() && (
-                <TouchableOpacity onPress={() => setSplitSelectedDate(todayKST())}
-                  style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: 'rgba(0,122,255,0.12)' }}>
-                  <Text style={{ fontSize: 11, color: '#007AFF', fontWeight: '600' }}>오늘로</Text>
-                </TouchableOpacity>
-              )}
-              <View style={{ flex: 1 }} />
-              <TouchableOpacity onPress={() => setShowIssueBrowser(true)}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, backgroundColor: '#5E5CE622', borderWidth: StyleSheet.hairlineWidth, borderColor: '#5E5CE688' }}>
-                <Ionicons name="logo-github" size={12} color="#5E5CE6" />
-                <Text style={{ fontSize: 11, color: '#5E5CE6', fontWeight: '600' }}>이슈</Text>
-              </TouchableOpacity>
-            </View>
-            {/* 선택 날짜 태스크 */}
-            {(() => {
-              const dayTasks = tasks.filter((t) => {
-                const ref = t.due_date ?? t.start_date;
-                return ref && ref.split('T')[0] === splitSelectedDate;
-              }).sort((a, b) => {
-                const order = ['urgent','high','medium','low'];
-                return order.indexOf(a.priority ?? 'low') - order.indexOf(b.priority ?? 'low');
-              });
-              if (dayTasks.length === 0) return (
-                <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <Ionicons name="calendar-outline" size={32} color={C.text4} />
-                  <Text style={{ fontSize: 13, color: C.text3 }}>이 날짜에 마감인 태스크가 없어요</Text>
-                </View>
-              );
-              return (
-                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingVertical: 4 }}>
-                  {dayTasks.map((task) => {
-                    const sm = STATUS_META[task.status] ?? STATUS_META['todo'];
-                    return (
-                      <View key={task.id}
-                        style={{ paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.rowBorder }}>
-                        <Text style={{ fontSize: 13, color: C.text, fontWeight: '500', marginBottom: 5 }} numberOfLines={2}>{task.title}</Text>
-                        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
-                          {task.product && (
-                            <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: C.chipBg }}>
-                              <Text style={{ fontSize: 10, color: C.chipText }}>{task.product}</Text>
-                            </View>
-                          )}
-                          {task.milestone && (
-                            <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: C.chipBg }}>
-                              <Text style={{ fontSize: 10, color: C.chipText }}>{task.milestone}</Text>
-                            </View>
-                          )}
-                          <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: sm.bg }}>
-                            <Text style={{ fontSize: 10, color: sm.color }}>{sm.label}</Text>
-                          </View>
-                          {task.due_date && (
-                            <Text style={{ fontSize: 10, color: C.text3, alignSelf: 'center' }}>
-                              due {task.due_date.split('T')[0]}
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                    );
-                  })}
-                </ScrollView>
-              );
-            })()}
-          </View>
-
-          {/* ── 오른쪽: 미니 캘린더 ── */}
-          <View style={{ width: 252, backgroundColor: C.bg, paddingHorizontal: 8, paddingVertical: 12 }}>
-            <SplitCalendar
-              tasks={tasks}
-              year={calMonth.year}
-              month={calMonth.month}
-              selectedDate={splitSelectedDate}
-              onSelectDate={(date) => {
-                setSplitSelectedDate(date);
-                const [y, m] = date.split('-').map(Number);
-                setCalMonth({ year: y, month: m - 1 });
-              }}
-              onPrev={() => setCalMonth(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 })}
-              onNext={() => setCalMonth(({ year, month }) => month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 })}
-              C={C}
-            />
-          </View>
-        </View>
-      ) : calView === 'monthly' ? (
-        <MonthCalendar
-          tasks={tasks}
-          year={calMonth.year}
-          month={calMonth.month}
-          onPrev={() => setCalMonth(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 })}
-          onNext={() => setCalMonth(({ year, month }) => month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 })}
-          onSelectTask={(task) => { /* TODO: open detail */ }}
-          mode={mode}
-          onAdd={() => { setAddSectionMilestone(null); setShowAddSection(true); }}
-          onDatePress={(_date) => {}}
-        />
-      ) : calView === 'weekly' ? (
-        <WeekView
-          tasks={tasks}
-          weekStart={calWeekStart}
-          onPrev={() => setCalWeekStart((s) => { const d = new Date(s); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; })}
-          onNext={() => setCalWeekStart((s) => { const d = new Date(s); d.setDate(d.getDate() + 7); return d.toISOString().split('T')[0]; })}
-          onSelectTask={(task) => {}}
-          mode={mode}
-          onAdd={() => { setAddSectionMilestone(null); setShowAddSection(true); }}
-          onDatePress={(_date) => {}}
-        />
-      ) : calView === 'daily' ? (
-        <DayView
-          tasks={tasks}
-          day={calDay}
-          onPrev={() => setCalDay((s) => { const d = new Date(s); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0]; })}
-          onNext={() => setCalDay((s) => { const d = new Date(s); d.setDate(d.getDate() + 1); return d.toISOString().split('T')[0]; })}
-          onSelectTask={(task) => {}}
-          mode={mode}
-          onAdd={() => { setAddSectionMilestone(null); setShowAddSection(true); }}
-        />
-      ) : calView === 'schedule' ? (
-        <ScheduleView
-          tasks={tasks}
-          onSelectTask={(task) => {}}
-          onAdd={() => { setAddSectionMilestone(null); setShowAddSection(true); }}
-          C={C}
-        />
-      ) : calView === 'plan' ? (
-        <WeeklyPlanView
-          tasks={tasks}
-          weekStart={calWeekStart}
-          onPrev={() => setCalWeekStart((s) => { const d = new Date(s); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; })}
-          onNext={() => setCalWeekStart((s) => { const d = new Date(s); d.setDate(d.getDate() + 7); return d.toISOString().split('T')[0]; })}
-          onSelectTask={(task) => {}}
-          C={C}
-        />
-      ) : null}
+      {/* ── 주간 계획 섹션 ── */}
+      <WeekPlanSection
+        weekStart={calWeekStart}
+        tasks={tasks}
+        C={C}
+        onPrev={() => setCalWeekStart((s) => { const d = new Date(s); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; })}
+        onNext={() => setCalWeekStart((s) => { const d = new Date(s); d.setDate(d.getDate() + 7); return d.toISOString().split('T')[0]; })}
+      />
 
       {/* ── Content: Filter Sidebar + Multi-Column ── */}
-      {calView !== 'list' ? null : tasks.length === 0 ? (
+      {tasks.length === 0 ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 }}>
           <Ionicons name="layers-outline" size={48} color={C.text4} />
           <Text style={{ fontSize: 16, color: C.text3, fontWeight: '600' }}>업무 항목이 없어요</Text>
@@ -2273,77 +2291,6 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
           onClose={() => setLinkState(null)}
           onConfirm={commitLink}
         />
-      )}
-
-      {/* ── Issue Browser ── */}
-      {showIssueBrowser && (
-        <Modal visible animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowIssueBrowser(false)}>
-          <IssueBrowser
-            C={C}
-            milestones={[...MILESTONES, 'v4.13', 'v4.14', 'v4.15'].filter((v, i, a) => a.indexOf(v) === i)}
-            defaultMilestone={MILESTONES[0]}
-            tasks={tasks}
-            myUsername={username}
-            onLinkIssue={async (taskId, repo, num) => { await commitIssue(taskId, repo, num); }}
-            onCreateTask={async (title, product, milestone, repo, issueNum) => {
-              const { data } = await supabase.from('tasks').insert({
-                mode, title, status: 'todo', type: 'task',
-                product, milestone, parent_id: null, note: null, business: null,
-                priority: null, start_date: null, due_date: null, end_date: null,
-                checklist: [], user_id: userId ?? null,
-              }).select().single();
-              if (data) {
-                const { data: issueRow } = await supabase
-                  .from('task_issues')
-                  .insert({ task_id: data.id, github_repo: repo, github_issue_number: issueNum })
-                  .select()
-                  .single();
-                const withIssue = { ...data, task_issues: issueRow ? [issueRow] : [] };
-                setTasks((prev) => {
-                  const next = [...prev, withIssue];
-                  AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
-                  return next;
-                });
-              }
-            }}
-            onCreateFolder={async (folderTitle, issues, milestone) => {
-              const products = [...new Set(issues.map((i) => i.product))];
-              const product = products.length === 1 ? products[0] : null;
-              // 1. 부모(폴더) task 생성
-              const { data: parent } = await supabase.from('tasks').insert({
-                mode, title: folderTitle, status: 'todo', type: 'task',
-                product, milestone, parent_id: null, note: null, business: null,
-                priority: null, start_date: null, due_date: null, end_date: null,
-                checklist: [], user_id: userId ?? null,
-              }).select().single();
-              if (!parent) return;
-              const newTasks: Task[] = [{ ...parent, task_issues: [] }];
-              // 2. 자식 tasks + 이슈 연결
-              for (const issue of issues) {
-                const { data: child } = await supabase.from('tasks').insert({
-                  mode, title: issue.title, status: 'todo', type: 'task',
-                  product: issue.product, milestone, parent_id: parent.id,
-                  note: null, business: null, priority: null,
-                  start_date: null, due_date: null, end_date: null,
-                  checklist: [], user_id: userId ?? null,
-                }).select().single();
-                if (child) {
-                  const { data: issueRow } = await supabase
-                    .from('task_issues')
-                    .insert({ task_id: child.id, github_repo: issue.repo, github_issue_number: issue.issueNum })
-                    .select().single();
-                  newTasks.push({ ...child, task_issues: issueRow ? [issueRow] : [] });
-                }
-              }
-              setTasks((prev) => {
-                const next = [...prev, ...newTasks];
-                AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
-                return next;
-              });
-            }}
-            onClose={() => setShowIssueBrowser(false)}
-          />
-        </Modal>
       )}
 
       {/* ── 폴더 묶기 플로팅 바 ── */}

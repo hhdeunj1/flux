@@ -391,12 +391,13 @@ export default function HomeScreen() {
 
   if (mode === 'work2') return (
     <SafeAreaView style={{ flex: 1, backgroundColor: isLight ? '#F2F2F7' : '#161618' }}>
-      <BoardContainer
+      <WorkspaceView
         isLight={isLight}
         onToggleLight={toggleLight}
         onSwitchMode={switchMode}
         userId={session.user.id}
         username={session.user.user_metadata?.preferred_username ?? session.user.user_metadata?.user_name}
+        mode="work2"
       />
     </SafeAreaView>
   );
