@@ -1158,7 +1158,8 @@ function WeekPlanSection({ weekStart, tasks, C, onPrev, onNext }: {
   const weekOrd = Math.ceil(startD.getDate() / 7);
   const weekLabel = `${startD.getFullYear()}년 ${startD.getMonth() + 1}월 ${weekOrd}째주`;
   const todayStr = todayKST();
-  const days = WEEK_DAY_KEYS.map((_, i) => { const d = new Date(startD); d.setDate(d.getDate() + i); return d.toISOString().split('T')[0]; });
+  const fmtLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const days = WEEK_DAY_KEYS.map((_, i) => { const d = new Date(startD); d.setDate(d.getDate() + i); return fmtLocal(d); });
   const rootTasks = tasks.filter(t => !t.parent_id);
   const selectedTaskIds = pickTarget
     ? new Set(dayPlans[pickTarget.dayKey].items.find(i => i.id === pickTarget.itemId)?.taskIds ?? [])
@@ -1261,7 +1262,7 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
   const [addSectionMilestone, setAddSectionMilestone] = useState<string | null>(null);
 
   const [showFilterPanel, setShowFilterPanel] = useState(true);
-  const [calWeekStart, setCalWeekStart] = useState(() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().split('T')[0]; });
+  const [calWeekStart, setCalWeekStart] = useState(() => { const d = new Date(); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
   const [sectionOrders, setSectionOrders] = useState<Record<string, string[]>>({});
   const [childOrders, setChildOrders] = useState<Record<string, string[]>>({});
 
@@ -1970,8 +1971,8 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
         weekStart={calWeekStart}
         tasks={tasks}
         C={C}
-        onPrev={() => setCalWeekStart((s) => { const d = new Date(s); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; })}
-        onNext={() => setCalWeekStart((s) => { const d = new Date(s); d.setDate(d.getDate() + 7); return d.toISOString().split('T')[0]; })}
+        onPrev={() => setCalWeekStart((s) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() - 7); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })}
+        onNext={() => setCalWeekStart((s) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + 7); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })}
       />
 
       {/* ── Content: Filter Sidebar + Multi-Column ── */}
