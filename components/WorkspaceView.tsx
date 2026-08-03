@@ -1853,11 +1853,19 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
           }}
           folderSelectMode={folderSelectMode}
           isBoardSelected={isBoardSelected}
-          onToggleBoardSelect={() => setBoardSelected((prev) => {
-            const next = new Set(prev);
-            next.has(task.id) ? next.delete(task.id) : next.add(task.id);
-            return next;
-          })}
+          onToggleBoardSelect={() => {
+            const getDescendants = (id: string): string[] => {
+              const kids = tasks.filter((t) => t.parent_id === id).map((t) => t.id);
+              return [id, ...kids.flatMap((kid) => getDescendants(kid))];
+            };
+            const toToggle = getDescendants(task.id);
+            setBoardSelected((prev) => {
+              const next = new Set(prev);
+              const selecting = !prev.has(task.id);
+              toToggle.forEach((id) => selecting ? next.add(id) : next.delete(id));
+              return next;
+            });
+          }}
         />
         {isExpanded && children.map((child) => (
           <ChildReorderDiv
@@ -2375,13 +2383,17 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
                 checklist: [], user_id: userId ?? null,
               }).select().single();
               if (parent) {
-                // 선택한 태스크들의 parent_id 업데이트
-                const ids = [...boardSelected];
-                await supabase.from('tasks').update({ parent_id: parent.id }).in('id', ids);
+                // 선택 중 최상위만 reparent (부모가 선택에 포함된 태스크는 계층 유지)
+                const rootIds = [...boardSelected].filter((id) => {
+                  const t = tasks.find((x) => x.id === id);
+                  return !t?.parent_id || !boardSelected.has(t.parent_id);
+                });
+                await supabase.from('tasks').update({ parent_id: parent.id }).in('id', rootIds);
                 setTasks((prev) => {
+                  const rootSet = new Set(rootIds);
                   const next = [
                     { ...parent, task_issues: [] } as Task,
-                    ...prev.map((t) => boardSelected.has(t.id) ? { ...t, parent_id: parent.id } : t),
+                    ...prev.map((t) => rootSet.has(t.id) ? { ...t, parent_id: parent.id } : t),
                   ];
                   AsyncStorage.setItem(`flux_tasks_cache_${mode}_v2`, JSON.stringify(next));
                   return next;
