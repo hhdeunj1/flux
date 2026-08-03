@@ -14,14 +14,14 @@ const REPO_TO_PRODUCT: Record<string, string> = Object.entries(PRODUCT_REPO_MAP)
   {} as Record<string, string>
 );
 import { IssueBrowser } from './IssueBrowser';
-import { MonthCalendar, WeekView, DayView, ScheduleView, SplitCalendar } from './CalendarViews';
+import { MonthCalendar, WeekView, DayView, ScheduleView, SplitCalendar, WeeklyPlanView } from './CalendarViews';
 import {
   ThemeColors, DARK_C, LIGHT_C,
   PRODUCTS, MILESTONES, PRODUCT_DOT, PRODUCT_EMOJI, PRODUCT_SHORT, MILESTONE_DOT,
   todayKST, addWorkingDays, uid,
 } from '../lib/constants';
 
-type CalView = 'split' | 'list' | 'monthly' | 'weekly' | 'daily' | 'schedule';
+type CalView = 'split' | 'list' | 'monthly' | 'weekly' | 'daily' | 'schedule' | 'plan';
 const CAL_TABS: { value: CalView; label: string }[] = [
   { value: 'split',    label: '스플릿' },
   { value: 'list',     label: '목록' },
@@ -29,6 +29,7 @@ const CAL_TABS: { value: CalView; label: string }[] = [
   { value: 'weekly',   label: '주' },
   { value: 'daily',    label: '일' },
   { value: 'schedule', label: '일정' },
+  { value: 'plan',     label: '계획' },
 ];
 
 // ─── types ─────────────────────────────────────────────────
@@ -1904,6 +1905,15 @@ export function WorkspaceView({ isLight, onSwitchMode, onToggleLight, userId, us
           tasks={tasks}
           onSelectTask={(task) => {}}
           onAdd={() => { setAddSectionMilestone(null); setShowAddSection(true); }}
+          C={C}
+        />
+      ) : calView === 'plan' ? (
+        <WeeklyPlanView
+          tasks={tasks}
+          weekStart={calWeekStart}
+          onPrev={() => setCalWeekStart((s) => { const d = new Date(s); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; })}
+          onNext={() => setCalWeekStart((s) => { const d = new Date(s); d.setDate(d.getDate() + 7); return d.toISOString().split('T')[0]; })}
+          onSelectTask={(task) => {}}
           C={C}
         />
       ) : null}

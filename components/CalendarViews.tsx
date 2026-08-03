@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, FlatList, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, FlatList, StyleSheet, TextInput } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { Task } from '../lib/supabase';
 import { today, todayKST, STATUS_META, TASK_TYPES, ThemeColors } from '../lib/constants';
@@ -597,5 +598,137 @@ export function SplitCalendar({ tasks, year, month, selectedDate, onSelectDate, 
         </View>
       ))}
     </View>
+  );
+}
+
+// ─── 주간 계획 뷰 ──────────────────────────────────────────
+export function WeeklyPlanView({ tasks, weekStart, onPrev, onNext, onSelectTask, C }: {
+  tasks: Task[];
+  weekStart: string;
+  onPrev: () => void;
+  onNext: () => void;
+  onSelectTask: (task: Task) => void;
+  C: ThemeColors;
+}) {
+  const [planText, setPlanText] = React.useState('');
+  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const storageKey = `weekly_plan_${weekStart}`;
+
+  React.useEffect(() => {
+    AsyncStorage.getItem(storageKey).then((v) => setPlanText(v ?? ''));
+  }, [weekStart]);
+
+  const handlePlanChange = (text: string) => {
+    setPlanText(text);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      AsyncStorage.setItem(storageKey, text);
+    }, 500);
+  };
+
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return d.toISOString().split('T')[0];
+  });
+
+  const todayStr = todayKST();
+  const wsDate = new Date(weekStart);
+  const wMonth = wsDate.getMonth() + 1;
+  const weekOrdinals = ['첫째', '둘째', '셋째', '넷째', '다섯째'];
+  const weekNum = Math.ceil(wsDate.getDate() / 7);
+  const weekLabel = `${wMonth}월 ${weekOrdinals[weekNum - 1] ?? weekNum + '번째'}주`;
+  const [sm, em] = [days[0], days[6]].map((d) => {
+    const [, m, dd] = d.split('-');
+    return `${parseInt(m)}/${parseInt(dd)}`;
+  });
+
+  const tasksByDate: Record<string, Task[]> = {};
+  tasks.forEach((t) => {
+    if (!t.due_date) return;
+    const d = t.due_date.split('T')[0];
+    if (days.includes(d)) {
+      if (!tasksByDate[d]) tasksByDate[d] = [];
+      tasksByDate[d].push(t);
+    }
+  });
+
+  return (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }}>
+      {/* 네비 — 기존 calNavRow/calNavBtn/calNavTitle 동일 형식 */}
+      <View style={styles.calNavRow}>
+        <TouchableOpacity onPress={onPrev} style={styles.calNavBtn}>
+          <Ionicons name="chevron-back" size={16} color="#888" />
+        </TouchableOpacity>
+        <Text style={styles.calNavTitle}>
+          {weekLabel}{' '}
+          <Text style={{ color: '#555', fontSize: 11, fontWeight: '400' }}>({sm} – {em})</Text>
+        </Text>
+        <TouchableOpacity onPress={onNext} style={styles.calNavBtn}>
+          <Ionicons name="chevron-forward" size={16} color="#888" />
+        </TouchableOpacity>
+      </View>
+
+      {/* 이번 주 목표 입력 */}
+      <View style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border, paddingHorizontal: 12, paddingVertical: 10 }}>
+        <Text style={{ fontSize: 11, fontWeight: '600', color: C.text3, marginBottom: 6, letterSpacing: 0.3 }}>이번 주 목표</Text>
+        <TextInput
+          multiline
+          value={planText}
+          onChangeText={handlePlanChange}
+          placeholder="이번 주에 집중할 내용을 자유롭게 써보세요..."
+          placeholderTextColor={C.text4}
+          style={{ fontSize: 13, color: C.text, minHeight: 60, lineHeight: 20, textAlignVertical: 'top' }}
+        />
+      </View>
+
+      {/* 요일 헤더 — calWeekHeader 동일 형식 */}
+      <View style={styles.calWeekHeader}>
+        {WEEK_DAYS.map((d, i) => (
+          <View key={d} style={styles.calWeekCell}>
+            <Text style={[styles.calWeekLabel, i >= 5 && styles.calWeekLabelWeekend]}>{d}</Text>
+          </View>
+        ))}
+      </View>
+
+      {/* 날짜 칸 — calRow/calCell/weekCell 동일 형식 */}
+      <View style={[styles.calRow]}>
+        {days.map((dateStr, di) => {
+          const day = parseInt(dateStr.split('-')[2]);
+          const dayTasks = tasksByDate[dateStr] ?? [];
+          const isToday = dateStr === todayStr;
+          const isWeekend = di >= 5;
+          return (
+            <View
+              key={dateStr}
+              style={[styles.calCell, styles.weekCell, isWeekend && styles.calCellWeekend, isToday && styles.calCellToday]}
+            >
+              <Text style={[styles.calDayNum, isWeekend && styles.calDayWeekend, isToday && styles.calDayNumToday]}>
+                {day}
+              </Text>
+              {(() => {
+                const milestones = dayTasks.filter(t => t.type === 'schedule');
+                const regulars   = dayTasks.filter(t => t.type !== 'milestone');
+                return <>
+                  {milestones.map(t => (
+                    <TouchableOpacity key={t.id} onPress={() => onSelectTask(t)} style={styles.calMilestoneBanner}>
+                      <Text style={styles.calMilestoneText} numberOfLines={1}>◆ {t.title}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  {regulars.map(t => {
+                    const sm = STATUS_META[t.status];
+                    return (
+                      <TouchableOpacity key={t.id} onPress={() => onSelectTask(t)} style={[styles.calTaskChip, { backgroundColor: sm.bg }]}>
+                        <Text style={[styles.calTaskText, { color: sm.color }]} numberOfLines={1}>{t.title}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </>;
+              })()}
+            </View>
+          );
+        })}
+      </View>
+    </ScrollView>
   );
 }
