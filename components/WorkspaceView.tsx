@@ -1062,8 +1062,8 @@ function DayPlanCell({ dayLabel, dateStr, plan, tasks, C, isToday, isWeekend, on
       {plan.items.map(item => {
         const linked = tasks.filter(t => item.taskIds.includes(t.id));
         return (
-          <View key={item.id} style={{ marginBottom: 3 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+          <View key={item.id} style={{ marginBottom: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, height: 16 }}>
               <TouchableOpacity onPress={() => updateItem(item.id, { done: !item.done })} hitSlop={{ top: 3, bottom: 3, left: 3, right: 3 }}>
                 <View style={{ width: 11, height: 11, borderRadius: 2, borderWidth: 1.5, borderColor: item.done ? '#30D158' : C.border2, backgroundColor: item.done ? '#30D158' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
                   {item.done && <Ionicons name="checkmark" size={7} color="#fff" />}
@@ -1074,8 +1074,7 @@ function DayPlanCell({ dayLabel, dateStr, plan, tasks, C, isToday, isWeekend, on
                 onChangeText={t => updateItem(item.id, { text: t })}
                 placeholder="항목..."
                 placeholderTextColor={C.text4}
-                style={{ flex: 1, fontSize: 11, color: item.done ? C.text4 : C.text, textDecorationLine: item.done ? 'line-through' : 'none', lineHeight: 14, padding: 0 } as any}
-                multiline
+                style={{ flex: 1, fontSize: 11, color: item.done ? C.text4 : C.text, textDecorationLine: item.done ? 'line-through' : 'none', padding: 0, height: 16 } as any}
               />
               <TouchableOpacity onPress={() => onPickTasks(item.id)} hitSlop={{ top: 3, bottom: 3, left: 3, right: 3 }}>
                 <Ionicons name="link-outline" size={10} color={linked.length > 0 ? '#007AFF' : C.text4} />
