@@ -1052,9 +1052,9 @@ function DayPlanCell({ dayLabel, dateStr, plan, tasks, C, isToday, isWeekend, on
   };
 
   return (
-    <View style={{ flex: 1, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border, padding: 5, minHeight: 90 }}>
+    <View style={{ flex: 1, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.border, paddingHorizontal: 4, paddingVertical: 4 }}>
       {/* 날짜 헤더 */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 3 }}>
         <Text style={{ fontSize: 10, fontWeight: '600', color: isToday ? '#007AFF' : (isWeekend ? '#FF453A' : C.text3) }}>{dayLabel}</Text>
         <Text style={{ fontSize: 10, color: isToday ? '#007AFF' : C.text4, marginLeft: 2 }}>{d}</Text>
       </View>
@@ -1062,11 +1062,11 @@ function DayPlanCell({ dayLabel, dateStr, plan, tasks, C, isToday, isWeekend, on
       {plan.items.map(item => {
         const linked = tasks.filter(t => item.taskIds.includes(t.id));
         return (
-          <View key={item.id} style={{ marginBottom: 5 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 3 }}>
-              <TouchableOpacity onPress={() => updateItem(item.id, { done: !item.done })} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }} style={{ marginTop: 2 }}>
-                <View style={{ width: 12, height: 12, borderRadius: 3, borderWidth: 1.5, borderColor: item.done ? '#30D158' : C.border2, backgroundColor: item.done ? '#30D158' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
-                  {item.done && <Ionicons name="checkmark" size={8} color="#fff" />}
+          <View key={item.id} style={{ marginBottom: 3 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <TouchableOpacity onPress={() => updateItem(item.id, { done: !item.done })} hitSlop={{ top: 3, bottom: 3, left: 3, right: 3 }}>
+                <View style={{ width: 11, height: 11, borderRadius: 2, borderWidth: 1.5, borderColor: item.done ? '#30D158' : C.border2, backgroundColor: item.done ? '#30D158' : 'transparent', alignItems: 'center', justifyContent: 'center' }}>
+                  {item.done && <Ionicons name="checkmark" size={7} color="#fff" />}
                 </View>
               </TouchableOpacity>
               <TextInput
@@ -1074,18 +1074,18 @@ function DayPlanCell({ dayLabel, dateStr, plan, tasks, C, isToday, isWeekend, on
                 onChangeText={t => updateItem(item.id, { text: t })}
                 placeholder="항목..."
                 placeholderTextColor={C.text4}
-                style={{ flex: 1, fontSize: 11, color: item.done ? C.text4 : C.text, textDecorationLine: item.done ? 'line-through' : 'none', lineHeight: 15, padding: 0 } as any}
+                style={{ flex: 1, fontSize: 11, color: item.done ? C.text4 : C.text, textDecorationLine: item.done ? 'line-through' : 'none', lineHeight: 14, padding: 0 } as any}
                 multiline
               />
-              <TouchableOpacity onPress={() => onPickTasks(item.id)} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }} style={{ marginTop: 2 }}>
+              <TouchableOpacity onPress={() => onPickTasks(item.id)} hitSlop={{ top: 3, bottom: 3, left: 3, right: 3 }}>
                 <Ionicons name="link-outline" size={10} color={linked.length > 0 ? '#007AFF' : C.text4} />
               </TouchableOpacity>
             </View>
             {linked.length > 0 && (
-              <View style={{ marginTop: 2, marginLeft: 15, flexDirection: 'row', flexWrap: 'wrap', gap: 2 }}>
+              <View style={{ marginTop: 2, marginLeft: 14, flexDirection: 'row', flexWrap: 'wrap', gap: 2 }}>
                 {linked.map(t => (
                   <TouchableOpacity key={t.id} onPress={() => onPickTasks(item.id)}>
-                    <View style={{ paddingHorizontal: 4, paddingVertical: 1, borderRadius: 3, backgroundColor: C.chipBg, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
+                    <View style={{ paddingHorizontal: 3, paddingVertical: 1, borderRadius: 3, backgroundColor: C.chipBg, borderWidth: StyleSheet.hairlineWidth, borderColor: C.border }}>
                       <Text style={{ fontSize: 9, color: C.text3 }} numberOfLines={1}>{t.title.length > 12 ? t.title.slice(0, 12) + '…' : t.title}</Text>
                     </View>
                   </TouchableOpacity>
@@ -1096,9 +1096,9 @@ function DayPlanCell({ dayLabel, dateStr, plan, tasks, C, isToday, isWeekend, on
         );
       })}
       {/* 항목 추가 */}
-      <TouchableOpacity onPress={addItem} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }} style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 }}>
-        <Ionicons name="add" size={11} color={C.text4} />
-        <Text style={{ fontSize: 10, color: C.text4 }}>추가</Text>
+      <TouchableOpacity onPress={addItem} hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }} style={{ flexDirection: 'row', alignItems: 'center', gap: 1, marginTop: 1 }}>
+        <Ionicons name="add" size={10} color={C.text4} />
+        <Text style={{ fontSize: 9, color: C.text4 }}>추가</Text>
       </TouchableOpacity>
     </View>
   );
