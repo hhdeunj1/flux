@@ -1113,31 +1113,39 @@ function WeekPlanSection({ weekStart, tasks, C, onPrev, onNext }: {
     return init;
   });
   const [pickTarget, setPickTarget] = React.useState<{ dayKey: WeekDayKey; itemId: string } | null>(null);
-  const goalTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dayTimer  = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goalTimer    = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dayTimer     = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dayPlansRef  = React.useRef(dayPlans);
+  const weekStartRef = React.useRef(weekStart);
 
   React.useEffect(() => {
+    weekStartRef.current = weekStart;
     AsyncStorage.getItem(`weekly_goal_${weekStart}`).then(v => setWeekGoal(v ?? ''));
     AsyncStorage.getItem(`weekly_day_plans_${weekStart}`).then(v => {
       const init: any = {};
       WEEK_DAY_KEYS.forEach(k => { init[k] = { items: [] }; });
-      setDayPlans(v ? { ...init, ...JSON.parse(v) } : init);
+      const loaded = v ? { ...init, ...JSON.parse(v) } : init;
+      dayPlansRef.current = loaded;
+      setDayPlans(loaded);
     });
   }, [weekStart]);
 
   const handleGoalChange = (text: string) => {
     setWeekGoal(text);
     if (goalTimer.current) clearTimeout(goalTimer.current);
-    goalTimer.current = setTimeout(() => AsyncStorage.setItem(`weekly_goal_${weekStart}`, text), 500);
+    goalTimer.current = setTimeout(() => AsyncStorage.setItem(`weekly_goal_${weekStartRef.current}`, text), 500);
   };
 
   const updateDayPlan = (dayKey: WeekDayKey, plan: DayPlan) => {
     setDayPlans(prev => {
       const next = { ...prev, [dayKey]: plan };
-      if (dayTimer.current) clearTimeout(dayTimer.current);
-      dayTimer.current = setTimeout(() => AsyncStorage.setItem(`weekly_day_plans_${weekStart}`, JSON.stringify(next)), 300);
+      dayPlansRef.current = next;
       return next;
     });
+    if (dayTimer.current) clearTimeout(dayTimer.current);
+    dayTimer.current = setTimeout(() => {
+      AsyncStorage.setItem(`weekly_day_plans_${weekStartRef.current}`, JSON.stringify(dayPlansRef.current));
+    }, 300);
   };
 
   const toggleTaskLink = (dayKey: WeekDayKey, itemId: string, taskId: string) => {
